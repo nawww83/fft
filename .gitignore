@@ -1,0 +1,47 @@
+# Сборка (бинарники, объектные файлы, кэш CMake)
+build/
+bin/
+lib/
+out/
+.cache/
+
+# CMake генерируемые файлы (на случай, если сборка идет не в build/)
+CMakeFiles/
+CMakeCache.txt
+CMakeUserPresets.json
+cmake_install.cmake
+Makefile
+*.ninja
+*.ninja_deps
+*.ninja_log
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+
+# Компиляторы и логи
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.log
+
+# Временные файлы ОС
+.DS_Store
+Thumbs.db
+
