@@ -35,11 +35,26 @@ FFTIterative::FFTIterative(size_t max_n) : max_n(max_n) {
     }
 }
 
+// Базовая бабочка без умножения (для N=2)
+inline void butterfly2(Complex& a, Complex& b) {
+    Complex t = b;
+    b = a - t;
+    a = a + t;
+}
+
+// Базовая бабочка с умножением на -i (для N=4)
+inline void butterfly4_is(Complex& a, Complex& b) {
+    // b * (-i) = {b.imag, -b.real}
+    Complex t = {b.imag(), -b.real()};
+    b = a - t;
+    a = a + t;
+}
+
 void FFTIterative::transform(ComplexVec &v, bool invert) const {
     const size_t n = v.size();
     if (n <= 1) return;
 
-    // 1. Bit-reversal permutation
+    // 1. Bit-reversal (без изменений)
     for (size_t i = 1, j = 0; i < n; i++) {
         size_t bit = n >> 1;
         for (; j & bit; bit >>= 1) j ^= bit;
@@ -47,17 +62,37 @@ void FFTIterative::transform(ComplexVec &v, bool invert) const {
         if (i < j) std::swap(v[i], v[j]);
     }
 
-    // 2. Итеративные проходы (Layers)
-    for (size_t len = 2; len <= n; len <<= 1) {
+    // 2. БАЗОВЫЕ СЛУЧАИ (Развернутые слои)
+    
+    // Слой len=2: w всегда 1
+    for (size_t i = 0; i < n; i += 2) {
+        butterfly2(v[i], v[i + 1]);
+    }
+
+    // Слой len=4: w это 1 и -i (или i)
+    if (n >= 4) {
+        for (size_t i = 0; i < n; i += 4) {
+            // j = 0: w = 1
+            butterfly2(v[i], v[i + 2]);
+            // j = 1: w = -i (forward) или i (inverse)
+            if (!invert) butterfly4_is(v[i + 1], v[i + 3]);
+            else {
+                Complex t = {-v[i + 3].imag(), v[i + 3].real()}; // * i
+                v[i + 3] = v[i + 1] - t;
+                v[i + 1] = v[i + 1] + t;
+            }
+        }
+    }
+
+    // 3. ОСНОВНОЙ ЦИКЛ (начиная с len=8)
+    for (size_t len = 8; len <= n; len <<= 1) {
         const size_t half = len >> 1;
         const size_t step = max_n / len;
 
-        // Внешний цикл идет по блокам данных размера len
         for (size_t start = 0; start < n; start += len) {
-            // Вызываем SIMD-ядро для конкретного блока
             apply_butterfly_block(
-                v.data() + start,        // "Нижняя" половина бабочек
-                v.data() + start + half, // "Верхняя" половина
+                v.data() + start, 
+                v.data() + start + half, 
                 table.data(), 
                 half, 
                 step, 
@@ -66,7 +101,6 @@ void FFTIterative::transform(ComplexVec &v, bool invert) const {
         }
     }
 
-    // 3. Нормировка для обратного преобразования
     if (invert) {
         const double inv_n = 1.0 / static_cast<double>(n);
         for (auto &x : v) x *= inv_n;

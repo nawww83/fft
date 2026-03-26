@@ -73,21 +73,32 @@ void FFTRecursive::run_fft(std::span<Complex> data,
                            size_t current_stride) 
 {
     const size_t n = data.size();
-    if (n <= 1) return;
+    
+    // --- БАЗОВЫЙ СЛУЧАЙ N=2 ---
+    if (n == 2) {
+        Complex e = data[0];
+        Complex o = data[1];
+        data[0] = e + o;
+        data[1] = e - o;
+        return;
+    }
+    
+    // Для n < 2 просто выходим (защита)
+    if (n < 2) return;
+
     const size_t half = n / 2;
 
-    // Распределяем элементы по четности (copy-stride)
+    // Распределяем элементы по четности
     for (size_t i = 0; i < half; ++i) {
         buffer[i]        = data[i * 2];
         buffer[i + half] = data[i * 2 + 1];
     }
 
-    // Рекурсия: меняем роли data и buffer для экономии памяти
+    // Рекурсия
     run_fft(buffer.subspan(0, half), data.subspan(0, half), twiddles, current_stride * 2);
     run_fft(buffer.subspan(half, half), data.subspan(half, half), twiddles, current_stride * 2);
 
-    // Бабочка с использованием SIMD-ядра
-    // Передаем указатели и размер напрямую
+    // SIMD Бабочка
     compute_butterfly_simd(
         data.data(), 
         buffer.data(), 
