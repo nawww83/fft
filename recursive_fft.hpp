@@ -1,11 +1,7 @@
 #pragma once
 
-#include <vector>
-#include <complex>
 #include <span>
-
-using Complex = std::complex<double>;
-using ComplexVec = std::vector<Complex>;
+#include "types.hpp"
 
 class FFTRecursive {
 public:

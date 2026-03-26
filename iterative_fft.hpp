@@ -1,20 +1,15 @@
 
 #pragma once
 
-#include <vector>
-#include <complex>
-
-using Complex = std::complex<double>;
-using ComplexVec = std::vector<Complex>;
-
+#include "types.hpp"
 
 class FFTIterative {
 public:
     explicit FFTIterative(size_t max_n);
 
-    void transform(std::vector<Complex>& v, bool invert = false) const;
+    void transform(ComplexVec& v, bool invert = false) const;
 
 private:
     size_t max_n;
-    std::vector<Complex> table;
+    ComplexVec table;
 };

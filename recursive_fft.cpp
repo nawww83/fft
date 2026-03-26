@@ -8,16 +8,13 @@
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
 #endif
-static void compute_butterfly_simd(std::span<Complex> out,
-                                          std::span<const Complex> res_e,
-                                          std::span<const Complex> res_o,
-                                          const ComplexVec& twiddles,
-                                          size_t stride) 
+static void compute_butterfly_simd(Complex* __restrict__ out,
+                                   const Complex* __restrict__ res_e,
+                                   const Complex* __restrict__ res_o,
+                                   const Complex* __restrict__ tw,
+                                   size_t half_n,
+                                   size_t stride) 
 {
-    const size_t half_n = res_e.size();
-    // Подсказка компилятору для векторизации
-    const Complex* __restrict__ tw = twiddles.data();
-    
     for (size_t k = 0; k < half_n; ++k) {
         Complex t = tw[k * stride] * res_o[k];
         out[k]          = res_e[k] + t;
@@ -90,5 +87,13 @@ void FFTRecursive::run_fft(std::span<Complex> data,
     run_fft(buffer.subspan(half, half), data.subspan(half, half), twiddles, current_stride * 2);
 
     // Бабочка с использованием SIMD-ядра
-    compute_butterfly_simd(data, buffer.subspan(0, half), buffer.subspan(half, half), twiddles, current_stride);
+    // Передаем указатели и размер напрямую
+    compute_butterfly_simd(
+        data.data(), 
+        buffer.data(), 
+        buffer.data() + half, 
+        twiddles.data(), 
+        half, 
+        current_stride
+    );
 }
