@@ -5,8 +5,8 @@
 #include <algorithm>
 
 // Реализация SIMD-ядра
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+    __attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
 #endif
 static void compute_butterfly_simd(std::span<Complex> out,
                                           std::span<const Complex> res_e,

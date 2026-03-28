@@ -11,9 +11,12 @@ add_executable(fft_app main.cpp iterative_fft.cpp recursive_fft.cpp)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Обработка Clang (включая clang-cl на Windows)
     target_compile_options(fft_app PRIVATE -Wall -O3)
+
 elseif(MSVC)
     # Только "чистый" MSVC (cl.exe)
-    target_compile_options(fft_app PRIVATE /W4 /Ox /arch:AVX2)
+    # /permissive- делает компилятор более строгим к стандарту (нужно для C++20/23)
+    # /Zc:__cplusplus заставляет макрос __cplusplus выдавать верную дату
+    target_compile_options(fft_app PRIVATE /W4 /Ox /arch:AVX2 /permissive- /Zc:__cplusplus)
 else()
     # GCC / Другие
     # -march=x86-64-v2 даст базовое ускорение (SSE4.2), 

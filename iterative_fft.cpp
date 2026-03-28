@@ -10,8 +10,8 @@
 #include "iterative_fft.hpp"
 
 // 1. ВЫНОСИМ ЯДРО В ОТДЕЛЬНУЮ ФУНКЦИЮ ДЛЯ SIMD-КЛОНИРОВАНИЯ
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+    __attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
 #endif
 static void apply_butterfly_layer(Complex* __restrict__ data, 
                            const Complex* __restrict__ table, 
