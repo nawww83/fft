@@ -8,124 +8,133 @@
 #include <cmath>
 #include <ranges>
 #include <format> // C++20/23
+#include <chrono>
+#include <numbers>
+
+////////////////////////////////////////////////////
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#elif defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
 
 /**
- * Верификация БПФ с использованием фишек C++23.
- * Адаптивный допуск на основе машинного эпсилона, амплитуды и логарифма N.
+ * Привязывает текущий поток к конкретному логическому ядру.
+ * core_id: индекс ядра (0, 1, 2...)
  */
-static void verify_fft(const ComplexVec &original, const ComplexVec &restored)
-{
-    if (original.size() != restored.size())
-    {
-        std::cout << std::format("Ошибка: Размеры векторов не совпадают! ({} vs {})\n",
-                                 original.size(), restored.size());
-        return;
+bool pin_thread_to_core(int core_id) {
+#if defined(_WIN32) || defined(_WIN64)
+    // Windows: SetThreadAffinityMask принимает маску (1 << core_id)
+    HANDLE thread = GetCurrentThread();
+    DWORD_PTR mask = (static_cast<DWORD_PTR>(1) << core_id);
+    if (SetThreadAffinityMask(thread, mask) == 0) {
+        return false;
     }
-
-    const size_t n = original.size();
-
-    // 1. Находим максимальную амплитуду (C++20 ranges)
-    // std::views::transform позволяет вычислять abs "на лету" без копирования
-    auto abs_view = original | std::views::transform([](auto c)
-                                                     { return std::abs(c); });
-    double max_amplitude = *std::ranges::max_element(abs_view);
-
-    // Защита от нулевого сигнала
-    max_amplitude = std::max(max_amplitude, 1.0);
-
-    // 2. Вычисляем адаптивный порог
-    // Ошибка БПФ накапливается пропорционально log2(N)
-    constexpr double eps = std::numeric_limits<double>::epsilon();
-    const double log2n = std::log2(static_cast<double>(n) + 1.0);
-    const double tolerance = eps * max_amplitude * log2n;
-
-    // 3. Сравниваем векторы (C++23 std::views::zip)
-    double max_diff = 0.0;
-    size_t error_count = 0;
-
-    // zip позволяет идти по двум контейнерам параллельно, возвращая кортеж ссылок
-    for (auto [orig, rest] : std::views::zip(original, restored))
-    {
-        double diff = std::abs(orig - rest);
-        if (diff > max_diff)
-            max_diff = diff;
-        if (diff > tolerance)
-            error_count++;
+#elif defined(__linux__)
+    // Linux: pthread_setaffinity_np
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core_id, &cpuset);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+        return false;
     }
-
-    // 4. Вывод через std::format (C++20/23)
-    // {:e} — экспоненциальная форма, {:.15f} — фиксированная точность
-    std::cout << std::format(
-        "--- Анализ точности (C++23) ---\n"
-        "{:<20} {}\n"
-        "{:<20} {:.6f}\n"
-        "{:<20} {:e}\n"
-        "{:<20} {:e}\n"
-        "СТАТУС:              {}\n",
-        "Размер (N):", n,
-        "Max амплитуда:", max_amplitude,
-        "Порог (log N):", tolerance,
-        "Макс. отклонение:", max_diff,
-        (error_count == 0 ? "УСПЕХ" : std::format("ПРОВАЛ ({} ошибок)", error_count)));
+#else
+    // Другие ОС (например, macOS) не поддерживают стандартный аффинитет
+    return false; 
+#endif
+    return true;
 }
 
-int main()
-{
-    {
-        size_t N = 2048;
-        FFTIterative fft(N);
+////////////////////////////////////////////////////
 
-        // Генерируем сигнал с большой амплитудой для проверки адаптивности
-        ComplexVec original(N);
-        for (size_t i = 0; i < N; ++i)
-        {
-            original[i] = {1000.0 * std::sin(i * 0.1), 1000.0 * std::cos(i * 0.2)};
-        }
+// --- Генерация сигнала ---
+ComplexVec generate_signal(size_t n) {
+    auto view = std::views::iota(0u, n) 
 
-        ComplexVec work = original;
-        fft.transform(work, false); // Forward
-        fft.transform(work, true);  // Inverse
+              | std::views::transform([](size_t i) {
+                    return Complex{1000.0 * std::sin(i * 0.1), 1000.0 * std::cos(i * 0.2)};
+                });
+    ComplexVec res; res.reserve(n);
+    std::ranges::copy(view, std::back_inserter(res));
+    return res;
+}
 
-        verify_fft(original, work);
+// --- Расчет точности (SNR и L-inf) ---
+struct AccuracyMetrics {
+    double snr;
+    double l_inf;
+    std::string status;
+};
+
+AccuracyMetrics compute_accuracy(const ComplexVec& original, const ComplexVec& restored) {
+    double signal_energy = 0.0, noise_energy = 0.0, l_inf = 0.0, max_amp = 0.0;
+    for (auto [orig, rest] : std::views::zip(original, restored)) {
+        double a_orig = std::abs(orig);
+        double diff = std::abs(orig - rest);
+        signal_energy += a_orig * a_orig;
+        noise_energy += diff * diff;
+        if (a_orig > max_amp) max_amp = a_orig;
+        if (diff > l_inf) l_inf = diff;
     }
 
-    {
-        try
-        {
-            size_t N = 2048;
+    double snr = 10.0 * std::log10(signal_energy / (noise_energy + 1e-30));
+    double tol = std::numeric_limits<double>::epsilon() * std::max(max_amp, 1.0) * std::log2(original.size() + 1.0);
+    
+    return {snr, l_inf, (l_inf <= tol ? "OK" : "FAIL")};
+}
 
-            // 1. Инициализация рекурсивного процессора
-            // Выделяет буфер и предвычисляет таблицы один раз
-            FFTRecursive fft(N);
+// --- Бенчмарк ---
+template<typename T>
+void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterations) {
+    const ComplexVec original = generate_signal(n);
+    ComplexVec work = original;
 
-            // 2. Генерация тестового сигнала
-            ComplexVec original(N);
-            for (size_t i = 0; i < N; ++i)
-            {
-                original[i] = {
-                    1000.0 * std::sin(i * 0.1),
-                    1000.0 * std::cos(i * 0.2)};
-            }
+    // Разогрев
+    for(int i = 0; i < 5; ++i) { fft_processor.transform(work, false); fft_processor.transform(work, true); }
 
-            // 3. Работа с данными (копируем оригинал, чтобы потом сравнить)
-            ComplexVec work = original;
-
-            // Прямое преобразование (Forward FFT)
-            // Использует рекурсивное разделение и SIMD-бабочки
-            fft.transform(work, false);
-
-            // Обратное преобразование (Inverse FFT)
-            // Включает автоматическую нормировку на 1/N внутри метода
-            fft.transform(work, true);
-
-            // 4. Проверка точности (C++23 версия с адаптивным порогом)
-            verify_fft(original, work);
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "Ошибка: " << e.what() << std::endl;
-            return 1;
-        }
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < iterations; ++i) {
+        fft_processor.transform(work, false);
+        fft_processor.transform(work, true);
     }
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double total_sec = std::chrono::duration<double>(end - start).count();
+    double avg_sec = total_sec / iterations;
+    double mflops = (2.0 * 5.0 * n * std::log2(n) / avg_sec) / 1e6;
+
+    // Верификация
+    work = original;
+    fft_processor.transform(work, false);
+    fft_processor.transform(work, true);
+    auto acc = compute_accuracy(original, work);
+
+    // Вывод в едином стиле таблицы
+    std::cout << std::format("{:<12} | {:<7} | {:>10.4f} | {:>10.1f} | {:>8.1f} | {:>9.1e} | {:>6}\n", 
+                             name, n, avg_sec * 1000.0, mflops, acc.snr, acc.l_inf, acc.status);
+}
+
+int main() {
+    pin_thread_to_core(0);
+    try {
+        const std::vector<size_t> sizes = {1024, 4096, 16384, 65536};
+        
+        std::cout << std::format("\n{:=^86}\n", " FFT PERFORMANCE & ACCURACY TEST ");
+        std::cout << std::format("{:<12} | {:<7} | {:>10} | {:>10} | {:>8} | {:>9} | {:>6}\n", 
+                                 "Algorithm", "N", "Cycle ms", "MFLOPS", "SNR dB", "L-inf", "Stat");
+        std::cout << std::format("{:-^86}\n", "");
+
+        for (size_t N : sizes) {
+            FFTIterative iterative(N);
+            FFTRecursive recursive(N);
+            int iters = (N <= 4096) ? 50000 : 5000;
+
+            run_benchmark("Iterative", iterative, N, iters);
+            run_benchmark("Recursive", recursive, N, iters);
+            std::cout << std::format("{:-^86}\n", "");
+        }
+    } catch (const std::exception& e) { std::cerr << "Error: " << e.what() << "\n"; return 1; }
     return 0;
 }

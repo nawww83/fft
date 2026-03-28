@@ -8,16 +8,13 @@
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
     __attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
 #endif
-static void compute_butterfly_simd(std::span<Complex> out,
-                                          std::span<const Complex> res_e,
-                                          std::span<const Complex> res_o,
-                                          const ComplexVec& twiddles,
-                                          size_t stride) 
+static void compute_butterfly_simd(Complex* __restrict__ out,
+                                   const Complex* __restrict__ res_e,
+                                   const Complex* __restrict__ res_o,
+                                   const Complex* __restrict__ tw,
+                                   size_t half_n,
+                                   size_t stride) 
 {
-    const size_t half_n = res_e.size();
-    // Подсказка компилятору для векторизации
-    const Complex* __restrict__ tw = twiddles.data();
-    
     for (size_t k = 0; k < half_n; ++k) {
         Complex t = tw[k * stride] * res_o[k];
         out[k]          = res_e[k] + t;
@@ -76,19 +73,38 @@ void FFTRecursive::run_fft(std::span<Complex> data,
                            size_t current_stride) 
 {
     const size_t n = data.size();
-    if (n <= 1) return;
+    
+    // --- БАЗОВЫЙ СЛУЧАЙ N=2 ---
+    if (n == 2) {
+        Complex e = data[0];
+        Complex o = data[1];
+        data[0] = e + o;
+        data[1] = e - o;
+        return;
+    }
+    
+    // Для n < 2 просто выходим (защита)
+    if (n < 2) return;
+
     const size_t half = n / 2;
 
-    // Распределяем элементы по четности (copy-stride)
+    // Распределяем элементы по четности
     for (size_t i = 0; i < half; ++i) {
         buffer[i]        = data[i * 2];
         buffer[i + half] = data[i * 2 + 1];
     }
 
-    // Рекурсия: меняем роли data и buffer для экономии памяти
+    // Рекурсия
     run_fft(buffer.subspan(0, half), data.subspan(0, half), twiddles, current_stride * 2);
     run_fft(buffer.subspan(half, half), data.subspan(half, half), twiddles, current_stride * 2);
 
-    // Бабочка с использованием SIMD-ядра
-    compute_butterfly_simd(data, buffer.subspan(0, half), buffer.subspan(half, half), twiddles, current_stride);
+    // SIMD Бабочка
+    compute_butterfly_simd(
+        data.data(), 
+        buffer.data(), 
+        buffer.data() + half, 
+        twiddles.data(), 
+        half, 
+        current_stride
+    );
 }
