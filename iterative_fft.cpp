@@ -13,9 +13,9 @@
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
     __attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
 #endif
-static void apply_butterfly_block(Complex* __restrict__ data_low, 
-                                 Complex* __restrict__ data_high, 
-                                 const Complex* __restrict__ table, 
+static void apply_butterfly_block(Complex* RESTRICT data_low, 
+                                 Complex* RESTRICT data_high, 
+                                 const Complex* RESTRICT table, 
                                  size_t half, size_t step, bool invert) 
 {
     // Внутренний цикл теперь идет по j (0...half)

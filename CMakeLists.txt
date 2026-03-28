@@ -18,6 +18,8 @@ add_executable(fft_app
 if(MSVC)
     # Настройки для Microsoft Visual C++
     target_compile_options(fft_app PRIVATE 
+        /std:c++latest # <--- ОБЯЗАТЕЛЬНО для C++20/23
+        /permissive-      # Делает компилятор более строгим к стандарту
         /W4            # Высокий уровень предупреждений
         /Ox            # Максимальная оптимизация
         /arch:AVX2     # Включаем AVX2 инструкции
@@ -25,7 +27,7 @@ if(MSVC)
         /Zc:__cplusplus  # Правильное значение макроса __cplusplus
         /utf-8         # Поддержка UTF-8 в исходниках (для кириллицы в std::print)
     )
-    target_compile_definitions(fft_app PRIVATE _USE_MATH_DEFINES) # Для старых заголовков cmath
+    target_compile_definitions(fft_app PRIVATE _USE_MATH_DEFINES NOMINMAX) # Для старых заголовков cmath
 else()
     # Настройки для GCC и Clang
     target_compile_options(fft_app PRIVATE 

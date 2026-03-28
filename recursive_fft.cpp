@@ -8,10 +8,10 @@
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
     __attribute__((target_clones("avx2", "avx", "sse4.2", "default")))
 #endif
-static void compute_butterfly_simd(Complex* __restrict__ out,
-                                   const Complex* __restrict__ res_e,
-                                   const Complex* __restrict__ res_o,
-                                   const Complex* __restrict__ tw,
+static void compute_butterfly_simd(Complex* RESTRICT out,
+                                   const Complex* RESTRICT res_e,
+                                   const Complex* RESTRICT res_o,
+                                   const Complex* RESTRICT tw,
                                    size_t half_n,
                                    size_t stride) 
 {
