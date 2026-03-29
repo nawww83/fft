@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "types.hpp"
@@ -11,5 +10,6 @@ public:
 
 private:
     size_t max_n;
-    ComplexVec table;
+    ComplexVec full_table;
+    std::vector<size_t> table_offsets; // Указатели на начало таблиц для каждого len
 };
