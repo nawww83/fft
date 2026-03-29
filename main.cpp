@@ -6,12 +6,11 @@
 #include <complex>
 #include <algorithm>
 #include <cmath>
-#include <ranges>
 #include <format>
 #include <chrono>
-#include <numbers>
-#include <string_view>
-#include <limits>
+#include <string>      // Для std::string в get_cpu_info
+#include <string_view> // Для параметров в run_benchmark
+#include <fstream>     // Для чтения /proc/cpuinfo на Linux
 
 // Кроссплатформенные заголовки для Affinity
 #if defined(_WIN32) || defined(_WIN64)
@@ -55,6 +54,51 @@ bool pin_thread_to_core(int core_id) {
     return false; 
 #endif
 }
+
+
+std::string get_cpu_info() {
+    std::string model = "Unknown CPU";
+    double freq_mhz = 0.0;
+
+#if defined(_WIN32) || defined(_WIN64)
+    HKEY hKey;
+    char buffer[256];
+    DWORD buffer_size = sizeof(buffer);
+    DWORD freq_val = 0;
+    DWORD freq_size = sizeof(freq_val);
+
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        // Модель
+        if (RegQueryValueExA(hKey, "ProcessorNameString", NULL, NULL, (LPBYTE)buffer, &buffer_size) == ERROR_SUCCESS) {
+            model = buffer;
+        }
+        // Частота (МГц)
+        if (RegQueryValueExA(hKey, "~MHz", NULL, NULL, (LPBYTE)&freq_val, &freq_size) == ERROR_SUCCESS) {
+            freq_mhz = static_cast<double>(freq_val);
+        }
+        RegCloseKey(hKey);
+    }
+#elif defined(__linux__)
+    // Модель из /proc/cpuinfo
+    std::ifstream cpuinfo("/proc/cpuinfo");
+    std::string line;
+    while (std::getline(cpuinfo, line)) {
+        if (line.starts_with("model name")) {
+            model = line.substr(line.find(": ") + 2);
+            break;
+        }
+    }
+    // Максимальная частота из sysfs (в кГц)
+    std::ifstream freq_file("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
+    if (freq_file.is_open()) {
+        long khz;
+        freq_file >> khz;
+        freq_mhz = khz / 1000.0;
+    }
+#endif
+    return std::format("{} @ {:.2f} GHz", model, freq_mhz / 1000.0);
+}
+
 
 ComplexVec generate_signal(size_t n) {
     ComplexVec res;
@@ -115,9 +159,11 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
 int main() {
     pin_thread_to_core(0);
     try {
+        std::cout << std::format("\nHardware: {}\n", get_cpu_info());
         const std::vector<size_t> sizes = {1024, 4096, 16384, 65536};
         
-        std::cout << std::format("\n{:^87}\n", "FFT PERFORMANCE & ACCURACY TEST");
+        std::cout << std::format("{:^87}\n", "FFT PERFORMANCE & ACCURACY TEST");
+
         std::cout << std::format("{:-^87}\n", "");
         std::cout << std::format("{:<12} | {:>8} | {:>10} | {:>10} | {:>8} | {:>9} | {:>6}\n", 
                                  "Algorithm", "N", "Cycle (ms)", "MFLOPS", "SNR dB", "L-inf", "Stat");
