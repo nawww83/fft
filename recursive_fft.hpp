@@ -1,6 +1,7 @@
 #pragma once
 
 #include <span>
+#include <vector>
 #include "types.hpp"
 
 class FFTRecursive {
@@ -11,23 +12,23 @@ public:
     explicit FFTRecursive(size_t max_n);
 
     /**
-     * @brief Прямое или обратное БПФ.
+     * @brief Прямое или обратное БПФ (In-place).
      * @param v Вектор данных (изменяется на месте).
      * @param invert true для обратного преобразования.
      */
     void transform(ComplexVec& v, bool invert = false);
 
 private:
-    // Рекурсивная функция управления буферами
-    void run_fft(std::span<Complex> data,
-                 std::span<Complex> buffer,
-                 const ComplexVec& twiddles,
-                 size_t current_stride);
+    /**
+     * @brief Рекурсивная сборка "снизу вверх" после bit-reversal.
+     */
+    void run_fft_inplace(std::span<Complex> data,
+                         const ComplexVec& twiddles,
+                         size_t stride);
 
     static ComplexVec generate_twiddles(size_t n, bool invert);
 
     size_t m_max_n;
-    ComplexVec m_buffer;
-    ComplexVec m_twiddles;  // Таблица для прямого БПФ
-    ComplexVec m_itwiddles; // Таблица для обратного БПФ (чтобы не сопрягать в рантайме)
+    ComplexVec m_twiddles;  
+    ComplexVec m_itwiddles; 
 };
