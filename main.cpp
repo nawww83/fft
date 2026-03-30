@@ -120,20 +120,15 @@ AccuracyMetrics compute_accuracy(const ComplexVec& original, const ComplexVec& r
         l_inf = std::max(l_inf, diff);
     }
 
-    // Безопасный расчет SNR для -ffast-math
-    double snr;
-    if (noise_energy > std::numeric_limits<double>::min()) {
-        snr = 10.0 * std::log10(signal_energy / noise_energy);
-    } else {
-        // Вместо inf используем очень большое число (например, 999.0 dB)
-        // Это наглядно в таблице и не сломает логику форматтера
-        snr = 999.0; 
-    }
+    // Если шум экстремально мал (меньше минимального double), считаем его нулевым
+    bool perfect = (noise_energy <= std::numeric_limits<double>::min());
+    double snr = perfect ? 999.9 : 10.0 * std::log10(signal_energy / noise_energy);
 
     // Теоретический предел точности FFT: eps * log2(N) * max_amplitude
     // log2(N) отражает накопление ошибки при "бабочках" (butterflies)
     double eps = std::numeric_limits<double>::epsilon();
-    double tol = eps * std::log2(static_cast<double>(original.size())) * std::max(max_amp, 1.0);
+    // При -ffast-math точность может упасть, увеличиваем множитель с 1.0 до 16.0-64.0
+    double tol = 16. * eps * std::log2(static_cast<double>(original.size())) * std::max(max_amp, 1.0);
 
     return {snr, l_inf, l_inf <= tol};
 }
@@ -158,8 +153,11 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
 
     double total_sec = std::chrono::duration<double>(end - start).count();
     double avg_cycle_ms = (total_sec / iterations) * 1000.0;
-    // 2 прохода (FWD+INV) по 5*N*log2(N) операций
-    double mflops = (10.0 * n * std::log2(static_cast<double>(n)) / (total_sec / iterations)) / 1e6;
+
+    double logN = std::log2(static_cast<double>(n));
+    // 5 * N * logN (FWD) + 5 * N * logN (INV) + N (нормализация INV)
+    double total_ops = (10.0 * n * logN) + static_cast<double>(n);
+    double mflops = (total_ops / (total_sec / iterations)) / 1e6;
 
     work = original;
     fft_processor.transform(work, false);
