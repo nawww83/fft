@@ -55,7 +55,6 @@ bool pin_thread_to_core(int core_id) {
 #endif
 }
 
-
 std::string get_cpu_info() {
     std::string model = "Unknown CPU";
     double freq_mhz = 0.0;
@@ -99,28 +98,43 @@ std::string get_cpu_info() {
     return std::format("{} @ {:.2f} GHz", model, freq_mhz / 1000.0);
 }
 
-
 ComplexVec generate_signal(size_t n) {
     ComplexVec res;
     res.reserve(n);
     for (size_t i = 0; i < n; ++i) {
-        res.emplace_back(std::sin(i * 0.1) * 1000.0, std::cos(i * 0.2) * 1000.0);
+        res.emplace_back(std::sin(i * 0.13) * 1000.0, std::cos(i * 0.23) * 1000.0);
     }
     return res;
 }
 
 AccuracyMetrics compute_accuracy(const ComplexVec& original, const ComplexVec& restored) {
     double signal_energy = 0.0, noise_energy = 0.0, l_inf = 0.0, max_amp = 0.0;
+    
     for (size_t i = 0; i < original.size(); ++i) {
         double a_orig = std::abs(original[i]);
         double diff = std::abs(original[i] - restored[i]);
+        
         signal_energy += a_orig * a_orig;
         noise_energy += diff * diff;
         max_amp = std::max(max_amp, a_orig);
         l_inf = std::max(l_inf, diff);
     }
-    double snr = 10.0 * std::log10(signal_energy / (noise_energy + 1e-30));
-    double tol = 1e-11 * std::max(max_amp, 1.0) * std::log2(static_cast<double>(original.size()));
+
+    // Безопасный расчет SNR для -ffast-math
+    double snr;
+    if (noise_energy > std::numeric_limits<double>::min()) {
+        snr = 10.0 * std::log10(signal_energy / noise_energy);
+    } else {
+        // Вместо inf используем очень большое число (например, 999.0 dB)
+        // Это наглядно в таблице и не сломает логику форматтера
+        snr = 999.0; 
+    }
+
+    // Теоретический предел точности FFT: eps * log2(N) * max_amplitude
+    // log2(N) отражает накопление ошибки при "бабочках" (butterflies)
+    double eps = std::numeric_limits<double>::epsilon();
+    double tol = eps * std::log2(static_cast<double>(original.size())) * std::max(max_amp, 1.0);
+
     return {snr, l_inf, l_inf <= tol};
 }
 
