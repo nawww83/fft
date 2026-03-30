@@ -18,7 +18,7 @@ FFTRecursive::FFTRecursive(size_t max_n) : m_max_n(max_n) {
 
 // --- 1. ВЫНОСИМ ГОРЯЧЕЕ ЯДРО СБОРКИ ДЛЯ SIMD ---
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-    __attribute__((target_clones("avx2", "avx", "default")))
+    __attribute__((target_clones("avx512f", "avx2", "avx", "default")))
 #endif
 static void apply_recursive_butterfly(Complex* RESTRICT data, 
                                      const Complex* RESTRICT twiddles, 
@@ -35,7 +35,7 @@ static void apply_recursive_butterfly(Complex* RESTRICT data,
     }
 }
 
-// --- 2. БАЗОВЫЙ ИТЕРАТИВНЫЙ БЛОК (ТОЖЕ С КЛОНАМИ) ---
+// --- 2. БАЗОВЫЙ ИТЕРАТИВНЫЙ БЛОК ---
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
     __attribute__((target_clones("avx2", "avx", "default")))
 #endif

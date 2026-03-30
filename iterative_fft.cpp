@@ -1,24 +1,33 @@
 #include "iterative_fft.hpp"
 
-FFTIterative::FFTIterative(size_t max_n) : max_n(max_n)
-{
-    // Предварительный расчет таблиц поворотных коэффициентов (LUT)
-    // Суммарный объем: N/4 + N/8 + ... + 2 + 1 ≈ N/2 элементов.
-    full_table.reserve(max_n / 2);
+FFTIterative::FFTIterative(size_t max_n) : max_n(max_n) {
+    // Резервируем место под прямые и обратные коэффициенты
+    full_table.reserve(max_n); 
 
-    // Генерируем LUT начиная с len=8, так как уровни 2 и 4 оптимизированы вручную
-    for (size_t len = 8; len <= max_n; len <<= 1)
-    {
+    for (size_t len = 8; len <= max_n; len <<= 1) {
         table_offsets.push_back(full_table.size());
-
         const size_t half = len >> 1;
-        const double angle_base = -2.0 * std::numbers::pi / len;
-
-        for (size_t j = 0; j < half; ++j)
-        {
-            full_table.emplace_back(std::polar(1.0, j * angle_base));
+        
+        for (size_t j = 0; j < half; ++j) {
+            double angle = -2.0 * std::numbers::pi * j / len;
+            auto w = std::polar(1.0, angle);
+            full_table.push_back(w);
         }
     }
+
+    // Предпосчитываем пары для всех возможных размеров n = 2^k
+    for (size_t n = 2; n <= max_n; n <<= 1) {
+        std::vector<SwapPair> pairs;
+        int log2n = std::countr_zero(n);
+        for (uint32_t i = 0; i < n; ++i) {
+            uint32_t j = utils::fast_bit_reverse(i, log2n);
+            if (i < j) {
+                pairs.push_back({i, j});
+            }
+        }
+        rev_tables.push_back(std::move(pairs));
+    }
+
 }
 
 void FFTIterative::transform(ComplexVec &v, bool invert) const {

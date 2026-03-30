@@ -43,6 +43,7 @@ else()
         # Это идеально подходит для ваших SIMD-ядер.
         -march=x86-64-v3
         -ffinite-math-only # 
+        -fno-signed-zeros  #
         # Отключаем установку errno для мат. функций (ускоряет std::polar/sin/cos)
         -fno-math-errno
     )

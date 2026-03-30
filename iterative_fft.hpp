@@ -7,27 +7,31 @@
 #include <utility>
 #include <bit>
 
+struct Direct {
+    static inline Complex get(Complex w) { return w; }
+};
+
+struct Inverse {
+    static inline Complex get(Complex w) { return std::conj(w); }
+};
+
 /**
  * @brief Ядро бабочки FFT, вынесенное для SIMD векторизации.
  * target_clones позволяет компилятору создать версии под разные наборы инструкций.
  */
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-__attribute__((target_clones("avx2", "avx", "default")))
+__attribute__((target_clones("avx512f", "avx2", "avx", "default")))
 #endif
-template <bool invert>
+template <typename Mode>
 static inline void apply_butterfly_block(Complex *__restrict data_low,
-                                  Complex *__restrict data_high,
-                                  const Complex *__restrict table,
-                                  size_t half)
+                                         Complex *__restrict data_high,
+                                         const Complex *__restrict table,
+                                         size_t half)
 {
-    for (size_t j = 0; j < half; ++j)
-    {
-        // Компилятор выберет одну ветку и полностью удалит вторую
-        Complex w = table[j];
-        if constexpr (invert) {
-            w = std::conj(w);
-        }
-
+    for (size_t j = 0; j < half; ++j) {
+        // Компилятор заменит Mode::get(w) на w или std::conj(w)
+        // Для std::conj он просто инвертирует знак мнимой части прямо в регистре
+        Complex w = Mode::get(table[j]);
         Complex u = data_low[j];
         Complex t = data_high[j] * w;
 
@@ -68,16 +72,20 @@ private:
     size_t max_n;
     ComplexVec full_table;
     std::vector<size_t> table_offsets; // Указатели на начало таблиц для каждого len
+    struct SwapPair {
+        uint32_t i, j;
+    };
+    std::vector<std::vector<SwapPair>> rev_tables; // Таблицы для каждого n (2^k)
 
 template <bool invert>
 void execute_transform(ComplexVec &v) const {
     const size_t n = v.size();
-    const int log2n = static_cast<int>(std::countr_zero(n));
+    const int log2n = std::countr_zero(n);
+    // Индекс в rev_tables: log2n - 1 (для n=2 это 0, для n=4 это 1...)
+    const auto& pairs = rev_tables[log2n - 1];
 
-    // 1. Bit-reversal (остается как было)
-    for (size_t i = 0; i < n; ++i) {
-        size_t j = utils::fast_bit_reverse(i, log2n);
-        if (i < j) std::swap(v[i], v[j]);
+    for (const auto& p : pairs) {
+        std::swap(v[p.i], v[p.j]);
     }
 
     // 2. Слой len=2
@@ -106,11 +114,17 @@ void execute_transform(ComplexVec &v) const {
         const size_t half = len >> 1;
         const Complex *current_table = &full_table[table_offsets[table_idx++]];
         for (size_t start = 0; start < n; start += len) {
-            apply_butterfly_block<invert>( // Передаем параметр шаблона дальше
-                v.data() + start,
+            if constexpr (invert) {
+                apply_butterfly_block<Inverse>( v.data() + start,
                 v.data() + start + half,
                 current_table,
                 half);
+            } else {
+                apply_butterfly_block<Direct>( v.data() + start,
+                v.data() + start + half,
+                current_table,
+                half);
+            }
         }
     }
 
