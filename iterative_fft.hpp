@@ -20,7 +20,7 @@ struct Inverse {
  * target_clones позволяет компилятору создать версии под разные наборы инструкций.
  */
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-__attribute__((target_clones("avx512f", "avx2", "avx", "default")))
+__attribute__((target_clones("avx512f", "avx2", "default")))
 #endif
 template <typename Mode>
 static inline void apply_butterfly_block_simd(Complex *__restrict data_low,

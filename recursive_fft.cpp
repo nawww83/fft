@@ -5,7 +5,7 @@
 
 // --- 1. ВЫНОСИМ ГОРЯЧЕЕ ЯДРО СБОРКИ ДЛЯ SIMD ---
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-    __attribute__((target_clones("avx512f", "avx2", "avx", "default")))
+    __attribute__((target_clones("avx512f", "avx2", "default")))
 #endif
 static inline void apply_recursive_butterfly_simd(Complex* RESTRICT data, 
                                                  const Complex* RESTRICT twiddles, 
