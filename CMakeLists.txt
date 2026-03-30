@@ -44,7 +44,7 @@ else()
         -march=x86-64-v3
         -ffinite-math-only # 
         -fno-signed-zeros  #
-        # Отключаем установку errno для мат. функций (ускоряет std::polar/sin/cos)
+        # Отключаем установку errno для мат. функций (ускоряет sin/cos)
         -fno-math-errno
     )
 

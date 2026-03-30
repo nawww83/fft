@@ -7,11 +7,12 @@ FFTIterative::FFTIterative(size_t max_n) : max_n(max_n) {
     for (size_t len = 8; len <= max_n; len <<= 1) {
         table_offsets.push_back(full_table.size());
         const size_t half = len >> 1;
-        
+        const double angle_step = -2.0 * std::numbers::pi / len; // Выносим общую часть
+
         for (size_t j = 0; j < half; ++j) {
-            double angle = -2.0 * std::numbers::pi * j / len;
-            auto w = std::polar(1.0, angle);
-            full_table.push_back(w);
+            double angle = angle_step * j;
+            // Явный конструктор: проще для оптимизатора sincos
+            full_table.emplace_back(std::cos(angle), std::sin(angle));
         }
     }
 

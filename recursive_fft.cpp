@@ -2,117 +2,93 @@
 #include "bit_reverse.hpp"
 
 #include <numbers>
-#include <bit>
-#include <algorithm>
-#include <stdexcept>
-
-// 1. КОНСТРУКТОР (Исправляем LNK2019)
-FFTRecursive::FFTRecursive(size_t max_n) : m_max_n(max_n) {
-    if (!std::has_single_bit(max_n)) {
-        throw std::invalid_argument("FFT size must be a power of 2");
-    }
-
-    m_twiddles = generate_twiddles(max_n, false);
-    m_itwiddles = generate_twiddles(max_n, true);
-}
 
 // --- 1. ВЫНОСИМ ГОРЯЧЕЕ ЯДРО СБОРКИ ДЛЯ SIMD ---
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
     __attribute__((target_clones("avx512f", "avx2", "avx", "default")))
 #endif
-static void apply_recursive_butterfly(Complex* RESTRICT data, 
-                                     const Complex* RESTRICT twiddles, 
-                                     size_t half, size_t stride) 
+static inline void apply_recursive_butterfly_simd(Complex* RESTRICT data, 
+                                                 const Complex* RESTRICT twiddles, 
+                                                 size_t half) 
 {
-    // Этот цикл теперь будет векторизован компилятором под разные архитектуры
+    // Теперь это идеальный цикл для векторизации: два линейных чтения, два линейных записи
     for (size_t k = 0; k < half; ++k) {
-        Complex w = twiddles[k * stride];
-        Complex t = w * data[k + half];
+        Complex w = twiddles[k]; 
         Complex u = data[k];
+        Complex t = w * data[k + half];
         
         data[k]        = u + t;
         data[k + half] = u - t;
     }
 }
 
-// --- 2. БАЗОВЫЙ ИТЕРАТИВНЫЙ БЛОК ---
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-    __attribute__((target_clones("avx2", "avx", "default")))
-#endif
-static void fast_base_fft(Complex* RESTRICT data, const Complex* RESTRICT twiddles, 
-                         size_t n, size_t stride_base) 
-{
-    for (size_t len = 2; len <= n; len <<= 1) {
-        size_t half = len >> 1;
-        size_t step = stride_base * (n / len);
-        for (size_t start = 0; start < n; start += len) {
-            for (size_t j = 0; j < half; ++j) {
-                Complex w = twiddles[j * step];
-                Complex t = w * data[start + j + half];
-                Complex u = data[start + j];
-                data[start + j]        = u + t;
-                data[start + j + half] = u - t;
-            }
+FFTRecursive::FFTRecursive(size_t max_n) : m_max_n(max_n) {
+    for (size_t n = 2; n <= max_n; n <<= 1) {
+        ComplexVec direct, inverse;
+        size_t half = n / 2;
+        direct.reserve(half);
+        inverse.reserve(half);
+        
+        for (size_t k = 0; k < half; ++k) {
+            double ang = -2.0 * std::numbers::pi * k / n;
+            direct.emplace_back(std::cos(ang), std::sin(ang));
+            inverse.emplace_back(std::cos(-ang), std::sin(-ang));
         }
+        m_twiddle_levels.push_back(std::move(direct));
+        m_itwiddle_levels.push_back(std::move(inverse));
     }
 }
 
-void FFTRecursive::run_fft_inplace(std::span<Complex> data, 
-                                   const ComplexVec& twiddles, 
-                                   size_t stride) 
+void FFTRecursive::run_fft_inplace(Complex* data, size_t n, int level, 
+                                   const std::vector<ComplexVec>& all_twiddles) 
 {
-    const size_t n = data.size();
+    if (n <= 1) return;
 
-    // Прерывание рекурсии (Threshold)
-    if (n <= 16) {
-        fast_base_fft(data.data(), twiddles.data(), n, stride);
+    // Базовый случай: на малых N (32 и меньше) переходим на итеративный микроблок
+    // или оставляем простую рекурсию, так как данные уже в L1 кэше.
+    if (n <= 32) { 
+        // Простая "бабочка" для малых длин без лишних вызовов
+        for (size_t len = 2; len <= n; len <<= 1) {
+            size_t half = len >> 1;
+            const Complex* tw = all_twiddles[std::countr_zero(len)-1].data();
+            for (size_t start = 0; start < n; start += len) {
+                for (size_t j = 0; j < half; ++j) {
+                    Complex t = tw[j] * data[start + j + half];
+                    Complex u = data[start + j];
+                    data[start + j] = u + t;
+                    data[start + j + half] = u - t;
+                }
+            }
+        }
         return;
     }
 
-    const size_t half = n / 2;
+    size_t half = n / 2;
+    // Рекурсивные вызовы (level-1)
+    run_fft_inplace(data, half, level - 1, all_twiddles);
+    run_fft_inplace(data + half, half, level - 1, all_twiddles);
 
-    // Рекурсия
-    run_fft_inplace(data.subspan(0, half), twiddles, stride * 2);
-    run_fft_inplace(data.subspan(half, half), twiddles, stride * 2);
-
-    // Вызов мультиверсионного ядра сборки
-    apply_recursive_butterfly(data.data(), twiddles.data(), half, stride);
+    // Сборка текущего уровня (используем SIMD-ядро)
+    // Коэффициенты берем из таблицы именно для этого уровня (level)
+    apply_recursive_butterfly_simd(data, all_twiddles[level].data(), half);
 }
 
-// 3. ОСНОВНОЙ МЕТОД
 void FFTRecursive::transform(ComplexVec& v, bool invert) {
     const size_t n = v.size();
     if (n <= 1) return;
-    
-    if (n > m_max_n || !std::has_single_bit(n)) {
-        throw std::invalid_argument("Invalid FFT size");
-    }
 
-    // Шаг 1: Bit-reversal перестановка (теперь обязательна для In-place рекурсии)
-    const int log2n = static_cast<int>(std::countr_zero(n));
-    for (size_t i = 0; i < n; ++i) {
-        size_t j = utils::fast_bit_reverse(i, log2n);
+    // 1. Bit-reversal (обязателен для In-place)
+    const int log2n = std::countr_zero(n);
+    for (uint32_t i = 0; i < n; ++i) {
+        uint32_t j = utils::fast_bit_reverse(i, log2n);
         if (i < j) std::swap(v[i], v[j]);
     }
 
-    // Шаг 2: Рекурсивная сборка
-    const ComplexVec& tw = invert ? m_itwiddles : m_twiddles;
-    run_fft_inplace(std::span<Complex>(v), tw, m_max_n / n);
+    // 2. Запуск рекурсии с правильной пирамидой таблиц
+    run_fft_inplace(v.data(), n, log2n - 1, invert ? m_itwiddle_levels : m_twiddle_levels);
 
-    // Шаг 3: Нормализация
     if (invert) {
-        const double inv_n = 1.0 / static_cast<double>(n);
+        double inv_n = 1.0 / n;
         for (auto& x : v) x *= inv_n;
     }
-}
-
-// Генерируем LUT
-ComplexVec FFTRecursive::generate_twiddles(size_t n, bool invert) {
-    ComplexVec res;
-    res.reserve(n / 2);
-    const double angle_base = (invert ? 2.0 : -2.0) * std::numbers::pi / n;
-    for (size_t k = 0; k < n / 2; ++k) {
-        res.emplace_back(std::polar(1.0, k * angle_base));
-    }
-    return res;
 }

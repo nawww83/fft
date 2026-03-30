@@ -23,7 +23,7 @@ struct Inverse {
 __attribute__((target_clones("avx512f", "avx2", "avx", "default")))
 #endif
 template <typename Mode>
-static inline void apply_butterfly_block(Complex *__restrict data_low,
+static inline void apply_butterfly_block_simd(Complex *__restrict data_low,
                                          Complex *__restrict data_high,
                                          const Complex *__restrict table,
                                          size_t half)
@@ -115,12 +115,12 @@ void execute_transform(ComplexVec &v) const {
         const Complex *current_table = &full_table[table_offsets[table_idx++]];
         for (size_t start = 0; start < n; start += len) {
             if constexpr (invert) {
-                apply_butterfly_block<Inverse>( v.data() + start,
+                apply_butterfly_block_simd<Inverse>( v.data() + start,
                 v.data() + start + half,
                 current_table,
                 half);
             } else {
-                apply_butterfly_block<Direct>( v.data() + start,
+                apply_butterfly_block_simd<Direct>( v.data() + start,
                 v.data() + start + half,
                 current_table,
                 half);

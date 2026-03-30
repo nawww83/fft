@@ -25,19 +25,21 @@ cmake --build .
 * **Compiler:** Microsoft Visual C++ 19.50.35721.0
 * **Architecture Flags:** `/std:c++latest /arch:AVX2 /Ox`
 
-| Algorithm | N | Cycle (ms) | MFLOPS | SNR dB | L-inf | Status |
+| Algorithm | N | Cycle (ms) | MFLOPS | SNR dB | L-inf | Stat |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Iterative** | 1024 | 0.0199 | 5134.8 | 305.5 | 1.4e-12 | OK |
-| **Recursive** | 1024 | 0.0259 | 3956.0 | 305.3 | 1.5e-12 | OK |
+| **Iterative** | 1024 | 0.0171 | 6048.9 | 304.6 | 1.6e-12 | OK |
+| **Recursive** | 1024 | 0.0218 | 4735.0 | 304.1 | 2.0e-12 | OK |
 | | | | | | | |
-| **Iterative** | 4096 | 0.0997 | 4932.0 | 303.5 | 2.0e-12 | OK |
-| **Recursive** | 4096 | 0.1296 | 3791.3 | 303.8 | 1.9e-12 | OK |
+| **Iterative** | 4096 | 0.0949 | 5223.2 | 303.8 | 2.3e-12 | OK |
+| **Recursive** | 4096 | 0.1108 | 4471.3 | 303.4 | 2.3e-12 | OK |
 | | | | | | | |
-| **Iterative** | 16384 | 0.4881 | 4699.5 | 302.8 | 2.3e-12 | OK |
-| **Recursive** | 16384 | 0.6315 | 3632.4 | 302.8 | 2.3e-12 | OK |
+| **Iterative** | 16384 | 0.4871 | 4742.2 | 303.2 | 2.6e-12 | OK |
+| **Recursive** | 16384 | 0.5752 | 4016.2 | 303.1 | 2.3e-12 | OK |
 | | | | | | | |
-| **Iterative** | 65536 | 2.5825 | 4060.3 | 303.1 | 2.6e-12 | OK |
-| **Recursive** | 65536 | 3.6607 | 2864.5 | 302.6 | 2.4e-12 | OK |
+| **Iterative** | 65536 | 3.1898 | 3307.9 | 303.2 | 2.6e-12 | OK |
+| **Recursive** | 65536 | 3.0502 | **3459.2** | 302.8 | 2.6e-12 | OK |
+
+![FFT Performance](assets/graph.png)
 
 ### Методология тестирования
 
