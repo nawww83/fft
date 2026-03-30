@@ -1,30 +1,14 @@
 #include "recursive_fft.hpp"
 #include "iterative_fft.hpp"
+#include "hardcore.hpp"
 
 #include <iostream>
 #include <vector>
 #include <complex>
 #include <algorithm>
 #include <cmath>
-#include <format>
 #include <chrono>
-#include <string>      // Для std::string в get_cpu_info
 #include <string_view> // Для параметров в run_benchmark
-#include <fstream>     // Для чтения /proc/cpuinfo на Linux
-
-// Кроссплатформенные заголовки для Affinity
-#if defined(_WIN32) || defined(_WIN64)
-    #include <windows.h>
-#elif defined(__linux__)
-    #include <pthread.h>
-    #include <sched.h>
-#endif
-
-struct AccuracyMetrics {
-    double snr;
-    double l_inf;
-    bool is_ok;
-};
 
 // Форматтер для вывода Complex через std::format
 template <>
@@ -35,68 +19,11 @@ struct std::formatter<std::complex<double>, char> {
     }
 };
 
-/**
- * @brief Привязка к ядру (Windows/Linux). 
- * На macOS/других просто вернет false.
- */
-bool pin_thread_to_core(int core_id) {
-#if defined(_WIN32) || defined(_WIN64)
-    HANDLE thread = GetCurrentThread();
-    DWORD_PTR mask = (static_cast<DWORD_PTR>(1) << core_id);
-    return SetThreadAffinityMask(thread, mask) != 0;
-#elif defined(__linux__)
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(core_id, &cpuset);
-    return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0;
-#else
-    (void)core_id; // Подавить warning
-    return false; 
-#endif
-}
-
-std::string get_cpu_info() {
-    std::string model = "Unknown CPU";
-    double freq_mhz = 0.0;
-
-#if defined(_WIN32) || defined(_WIN64)
-    HKEY hKey;
-    char buffer[256];
-    DWORD buffer_size = sizeof(buffer);
-    DWORD freq_val = 0;
-    DWORD freq_size = sizeof(freq_val);
-
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-        // Модель
-        if (RegQueryValueExA(hKey, "ProcessorNameString", NULL, NULL, (LPBYTE)buffer, &buffer_size) == ERROR_SUCCESS) {
-            model = buffer;
-        }
-        // Частота (МГц)
-        if (RegQueryValueExA(hKey, "~MHz", NULL, NULL, (LPBYTE)&freq_val, &freq_size) == ERROR_SUCCESS) {
-            freq_mhz = static_cast<double>(freq_val);
-        }
-        RegCloseKey(hKey);
-    }
-#elif defined(__linux__)
-    // Модель из /proc/cpuinfo
-    std::ifstream cpuinfo("/proc/cpuinfo");
-    std::string line;
-    while (std::getline(cpuinfo, line)) {
-        if (line.starts_with("model name")) {
-            model = line.substr(line.find(": ") + 2);
-            break;
-        }
-    }
-    // Максимальная частота из sysfs (в кГц)
-    std::ifstream freq_file("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
-    if (freq_file.is_open()) {
-        long khz;
-        freq_file >> khz;
-        freq_mhz = khz / 1000.0;
-    }
-#endif
-    return std::format("{} @ {:.2f} GHz", model, freq_mhz / 1000.0);
-}
+struct AccuracyMetrics {
+    double snr;
+    double l_inf;
+    bool is_ok;
+};
 
 ComplexVec generate_signal(size_t n) {
     ComplexVec res;
@@ -169,9 +96,9 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
 }
 
 int main() {
-    pin_thread_to_core(0);
+    hardcore::pin_thread_to_core(0);
     try {
-        std::cout << std::format("\nHardware: {}\n", get_cpu_info());
+        std::cout << std::format("\nHardware: {}\n", hardcore::get_cpu_info());
         const std::vector<size_t> sizes = {1024, 4096, 16384, 65536};
         
         std::cout << std::format("{:^87}\n", "FFT PERFORMANCE & ACCURACY TEST");
@@ -183,7 +110,7 @@ int main() {
 
         for (size_t N : sizes) {
             FFTIterative iterative(N);
-            FFTRecursive recursive(N); // <-- ТЕПЕРЬ ВКЛЮЧЕНО
+            FFTRecursive recursive(N);
 
             int iters = (N <= 4096) ? 5000 : 500;
 
