@@ -1,7 +1,6 @@
 #pragma once
 
 #include <span>
-#include <vector>
 #include "types.hpp"
 
 class FFTRecursive {

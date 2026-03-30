@@ -1,14 +1,11 @@
 #pragma once
 
 #include "types.hpp"
-
 #include "bit_reverse.hpp"
+
 #include <numbers>
-#include <algorithm>
-#include <complex>
-#include <cstddef>
+#include <utility>
 #include <bit>
-#include <cmath>
 
 /**
  * @brief Ядро бабочки FFT, вынесенное для SIMD векторизации.
