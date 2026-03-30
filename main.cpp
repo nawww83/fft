@@ -65,35 +65,53 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
     const ComplexVec original = generate_signal(n);
     ComplexVec work = original;
 
-    // Разогрев
-    for(int i = 0; i < 5; ++i) { 
+    // 1. Более серьезный разогрев (особенно для AVX-512)
+    for(int i = 0; i < 50; ++i) { 
         fft_processor.transform(work, false); 
         fft_processor.transform(work, true); 
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
+    std::vector<double> samples;
+    samples.reserve(iterations);
+
+    // 2. Сбор индивидуальных замеров
     for (int i = 0; i < iterations; ++i) {
+        auto t1 = std::chrono::high_resolution_clock::now();
         fft_processor.transform(work, false);
         fft_processor.transform(work, true);
+        auto t2 = std::chrono::high_resolution_clock::now();
+        
+        samples.push_back(std::chrono::duration<double>(t2 - t1).count());
     }
-    auto end = std::chrono::high_resolution_clock::now();
 
-    double total_sec = std::chrono::duration<double>(end - start).count();
-    double avg_cycle_ms = (total_sec / iterations) * 1000.0;
+    // 3. Статистика
+    std::sort(samples.begin(), samples.end());
+    
+    double min_sec = samples.front();
+    double median_sec = samples[iterations / 2];
+    
+    double sum = 0, sq_sum = 0;
+    for(double s : samples) { sum += s; sq_sum += s*s; }
+    double avg_sec = sum / iterations;
+    double std_dev_perc = std::sqrt(std::abs(sq_sum/iterations - avg_sec*avg_sec)) / avg_sec * 100.0;
 
+    // 4. Расчет MFLOPS на основе МЕДИАНЫ (самый честный показатель)
     double logN = std::log2(static_cast<double>(n));
-    // 5 * N * logN (FWD) + 5 * N * logN (INV) + N (нормализация INV)
     double total_ops = (10.0 * n * logN) + static_cast<double>(n);
-    double mflops = (total_ops / (total_sec / iterations)) / 1e6;
+    double mflops = (total_ops / median_sec) / 1e6;
 
+    // Точность (один проход)
     work = original;
     fft_processor.transform(work, false);
     fft_processor.transform(work, true);
     auto acc = compute_accuracy(original, work);
 
-    std::cout << std::format("{:<12} | {:>8} | {:>10.4f} | {:>10.1f} | {:>8.1f} | {:>9.1e} | {:>6}\n", 
-                             name, n, avg_cycle_ms, mflops, acc.snr, acc.l_inf, acc.is_ok ? "OK" : "FAIL");
+    // Вывод: добавили Jitter (std_dev) в процентах
+    // Выводим Jitter с символом %, SNR и статус
+    std::cout << std::format("{:<12} | {:>8} | {:>10.4f} | {:>10.1f} | {:>7.1f}% | {:>8.1f} | {:>6}\n", 
+                         name, n, median_sec * 1000.0, mflops, std_dev_perc, acc.snr, acc.is_ok ? "OK" : "FAIL");
 }
+
 
 int main() {
     hardcore::pin_thread_to_core(0);
@@ -104,8 +122,8 @@ int main() {
         std::cout << std::format("{:^87}\n", "FFT PERFORMANCE & ACCURACY TEST");
 
         std::cout << std::format("{:-^87}\n", "");
-        std::cout << std::format("{:<12} | {:>8} | {:>10} | {:>10} | {:>8} | {:>9} | {:>6}\n", 
-                                 "Algorithm", "N", "Cycle (ms)", "MFLOPS", "SNR dB", "L-inf", "Stat");
+        std::cout << std::format("{:<12} | {:>8} | {:>10} | {:>10} | {:>8} | {:>8} | {:>6}\n", 
+                         "Algorithm", "N", "Cycle (ms)", "MFLOPS", "Jitter", "SNR dB", "Stat");
         std::cout << std::format("{:-^87}\n", "");
 
         for (size_t N : sizes) {
