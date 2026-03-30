@@ -41,7 +41,7 @@ cmake --build .
 | **Recursive** | 65536 | 3.3457 | 3153.7 | **4.8%** | 302.8 | OK |
 
 
-![FFT Performance](assets/graph.png)
+![FFT Performance](assets/fft_benchmark.png)
 
 ### Методология тестирования производительности
 
