@@ -90,7 +90,7 @@ void FFTRecursive::transform(ComplexVec& v, bool invert) {
     // Шаг 1: Bit-reversal перестановка (теперь обязательна для In-place рекурсии)
     const int log2n = static_cast<int>(std::countr_zero(n));
     for (size_t i = 0; i < n; ++i) {
-        size_t j = fast_bit_reverse(i, log2n);
+        size_t j = utils::fast_bit_reverse(i, log2n);
         if (i < j) std::swap(v[i], v[j]);
     }
 

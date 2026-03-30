@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 project(FFT_Project LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # 1. Настройка стандарта C++23
 # Требуется для std::ranges::to, std::views::zip и std::print
 set(CMAKE_CXX_STANDARD 23)
@@ -18,8 +20,9 @@ add_executable(fft_app
 if(MSVC)
     # Настройки для Microsoft Visual C++
     target_compile_options(fft_app PRIVATE 
-        /std:c++latest # <--- ОБЯЗАТЕЛЬНО для C++20/23
-        /permissive-      # Делает компилятор более строгим к стандарту
+        /std:c++latest #
+        /fp:fast       # <--- Включает агрессивную оптимизацию математики (в т.ч. finite-math)
+        /permissive-   # Делает компилятор более строгим к стандарту
         /W4            # Высокий уровень предупреждений
         /Ox            # Максимальная оптимизация
         /arch:AVX2     # Включаем AVX2 инструкции
@@ -27,6 +30,8 @@ if(MSVC)
         /Zc:__cplusplus  # Правильное значение макроса __cplusplus
         /utf-8         # Поддержка UTF-8 в исходниках (для кириллицы в std::print)
     )
+    # Это заставит CMake не добавлять свой флаг /std:c++17 или 20 поверх
+    set_target_properties(fft_app PROPERTIES CXX_STANDARD 23 CXX_EXTENSIONS OFF)
     target_compile_definitions(fft_app PRIVATE _USE_MATH_DEFINES NOMINMAX) # Для старых заголовков cmath
 else()
     # Настройки для GCC и Clang
@@ -36,7 +41,8 @@ else()
         -O3 
         # x86-64-v3 включает: SSE4.2, AVX, AVX2, BMI2, FMA. 
         # Это идеально подходит для ваших SIMD-ядер.
-        -march=x86-64-v3 
+        -march=x86-64-v3
+        -ffinite-math-only # 
         # Отключаем установку errno для мат. функций (ускоряет std::polar/sin/cos)
         -fno-math-errno
     )

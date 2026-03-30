@@ -22,24 +22,22 @@ cmake --build .
 
 **Hardware & Environment:**
 * **CPU:** Intel(R) Core(TM) i7-8565U @ 1.80GHz (Turbo Boost up to 1.99 GHz during test)
-* **Compiler:** Microsoft Visual C++ 19.50.35721.0 (Visual Studio 2022 v17.10+)
+* **Compiler:** Microsoft Visual C++ 19.50.35721.0
 * **Architecture Flags:** `/std:c++latest /arch:AVX2 /Ox`
 
 | Algorithm | N | Cycle (ms) | MFLOPS | SNR dB | L-inf | Status |
-| :--- | ---: | ---: | ---: | ---: | ---: | :---: |
-| **Iterative** | 1024 | 0.0221 | 4638.7 | 309.2 | 1.0e-12 | OK |
-| **Recursive** | 1024 | 0.0287 | 3572.9 | 309.3 | 9.9e-13 | OK |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Iterative** | 1024 | 0.0199 | 5134.8 | 305.5 | 1.4e-12 | OK |
+| **Recursive** | 1024 | 0.0259 | 3956.0 | 305.3 | 1.5e-12 | OK |
 | | | | | | | |
-| **Iterative** | 4096 | 0.1133 | 4340.1 | 306.9 | 1.4e-12 | OK |
-| **Recursive** | 4096 | 0.1600 | 3072.8 | 307.0 | 1.3e-12 | OK |
+| **Iterative** | 4096 | 0.0997 | 4932.0 | 303.5 | 2.0e-12 | OK |
+| **Recursive** | 4096 | 0.1296 | 3791.3 | 303.8 | 1.9e-12 | OK |
 | | | | | | | |
-| **Iterative** | 16384 | 0.6210 | 3693.7 | 306.9 | 1.5e-12 | OK |
-| **Recursive** | 16384 | 0.8394 | 2732.6 | 306.8 | 1.5e-12 | OK |
+| **Iterative** | 16384 | 0.4881 | 4699.5 | 302.8 | 2.3e-12 | OK |
+| **Recursive** | 16384 | 0.6315 | 3632.4 | 302.8 | 2.3e-12 | OK |
 | | | | | | | |
-| **Iterative** | 65536 | 4.5884 | 2285.3 | 306.3 | 1.6e-12 | OK |
-| **Recursive** | 65536 | 5.4341 | 1929.6 | 306.0 | 1.6e-12 | OK |
-
----
+| **Iterative** | 65536 | 2.5825 | 4060.3 | 303.1 | 2.6e-12 | OK |
+| **Recursive** | 65536 | 3.6607 | 2864.5 | 302.6 | 2.4e-12 | OK |
 
 ### Методология тестирования
 
