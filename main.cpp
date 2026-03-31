@@ -10,14 +10,6 @@
 #include <chrono>
 #include <string_view> // Для параметров в run_benchmark
 
-// Форматтер для вывода Complex через std::format
-template <>
-struct std::formatter<std::complex<double>, char> {
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-    auto format(const std::complex<double>& c, format_context& ctx) const {
-        return std::format_to(ctx.out(), "{:.2f}+{:.2f}i", c.real(), c.imag());
-    }
-};
 
 struct AccuracyMetrics {
     double snr;
@@ -47,7 +39,7 @@ AccuracyMetrics compute_accuracy(const ComplexVec& original, const ComplexVec& r
         l_inf = std::max(l_inf, diff);
     }
 
-    // Если шум экстремально мал (меньше минимального double), считаем его нулевым
+    // Если шум экстремально мал, считаем его нулевым
     bool perfect = (noise_energy <= std::numeric_limits<double>::min());
     double snr = perfect ? 999.9 : 10.0 * std::log10(signal_energy / noise_energy);
 
@@ -65,7 +57,7 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
     const ComplexVec original = generate_signal(n);
     ComplexVec work = original;
 
-    // 1. Более серьезный разогрев (особенно для AVX-512)
+    // 1. Разогрев
     for(int i = 0; i < 50; ++i) { 
         fft_processor.transform(work, false); 
         fft_processor.transform(work, true); 
@@ -87,7 +79,7 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
     // 3. Статистика
     std::sort(samples.begin(), samples.end());
     
-    double min_sec = samples.front();
+    [[maybe_unused]] double min_sec = samples.front();
     double median_sec = samples[iterations / 2];
     
     double sum = 0, sq_sum = 0;
