@@ -57,8 +57,8 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
     const ComplexVec original = generate_signal(n);
     ComplexVec work = original;
 
-    // 1. Разогрев
-    for(int i = 0; i < 50; ++i) { 
+    // Разогрев
+    for(int i = 0; i < 100; ++i) { 
         fft_processor.transform(work, false); 
         fft_processor.transform(work, true); 
     }
@@ -66,71 +66,49 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
     std::vector<double> samples;
     samples.reserve(iterations);
 
-    // 2. Сбор индивидуальных замеров
     for (int i = 0; i < iterations; ++i) {
         auto t1 = std::chrono::high_resolution_clock::now();
         fft_processor.transform(work, false);
         fft_processor.transform(work, true);
         auto t2 = std::chrono::high_resolution_clock::now();
-        
-        samples.push_back(std::chrono::duration<double>(t2 - t1).count());
+        samples.push_back(std::chrono::duration<double, std::milli>(t2 - t1).count());
     }
 
-    // 3. Статистика
-    std::sort(samples.begin(), samples.end());
-    
-    [[maybe_unused]] double min_sec = samples.front();
-    double median_sec = samples[iterations / 2];
-    
-    double sum = 0, sq_sum = 0;
-    for(double s : samples) { sum += s; sq_sum += s*s; }
-    double avg_sec = sum / iterations;
-    double std_dev_perc = std::sqrt(std::abs(sq_sum/iterations - avg_sec*avg_sec)) / avg_sec * 100.0;
-
-    // 4. Расчет MFLOPS на основе МЕДИАНЫ (самый честный показатель)
-    double logN = std::log2(static_cast<double>(n));
-    double total_ops = (10.0 * n * logN) + static_cast<double>(n);
-    double mflops = (total_ops / median_sec) / 1e6;
-
-    // Точность (один проход)
+    // Расчет точности (один контрольный проход)
     work = original;
     fft_processor.transform(work, false);
     fft_processor.transform(work, true);
     auto acc = compute_accuracy(original, work);
 
-    // Вывод: добавили Jitter (std_dev) в процентах
-    // Выводим Jitter с символом %, SNR и статус
-    std::cout << std::format("{:<12} | {:>8} | {:>10.4f} | {:>10.1f} | {:>7.1f}% | {:>8.1f} | {:>6}\n", 
-                         name, n, median_sec * 1000.0, mflops, std_dev_perc, acc.snr, acc.is_ok ? "OK" : "FAIL");
-}
+    // Статистика времени
+    double sum = 0, sq_sum = 0;
+    for(double s : samples) { sum += s; sq_sum += s*s; }
+    double avg = sum / iterations;
+    double std_dev = std::sqrt(std::abs(sq_sum/iterations - avg*avg));
+    double ci95 = 1.96 * (std_dev / std::sqrt(static_cast<double>(iterations)));
 
+    // CSV: Algo, N, Mean, CI95, SNR, L_inf, IsOk
+    std::cout << std::format("{},{},{:.6f},{:.6f},{:.2f},{:.2e},{}\n", 
+                             name, n, avg, ci95, acc.snr, acc.l_inf, acc.is_ok ? 1 : 0);
+}
 
 int main() {
     hardcore::pin_thread_to_core(0);
-    try {
-        std::cout << std::format("\nHardware: {}\n", hardcore::get_cpu_info());
-        const std::vector<size_t> sizes = {1024, 4096, 16384, 65536};
-        
-        std::cout << std::format("{:^87}\n", "FFT PERFORMANCE & ACCURACY TEST");
+    std::cout << std::format("\nHardware: {}\n", hardcore::get_cpu_info());
+    // Печатаем заголовок для Python
+    std::cout << "Algorithm,N,Mean,CI95,SNR,L_inf,IsOk\n";
 
-        std::cout << std::format("{:-^87}\n", "");
-        std::cout << std::format("{:<12} | {:>8} | {:>10} | {:>10} | {:>8} | {:>8} | {:>6}\n", 
-                         "Algorithm", "N", "Cycle (ms)", "MFLOPS", "Jitter", "SNR dB", "Stat");
-        std::cout << std::format("{:-^87}\n", "");
+    // Добавляем 524288 и 1048576 для выхода за L3
+    const std::vector<size_t> sizes = {1024, 4096, 16384, 65536, 262144, 524288, 1048576};
+    for (size_t N : sizes) {
+        FFTIterative iterative(N);
+        FFTRecursive recursive(N);
+        // Для больших N уменьшаем итерации до 200, чтобы тест не шел вечно
+        int iters = (N <= 16384) ? 5000 : 200;
 
-        for (size_t N : sizes) {
-            FFTIterative iterative(N);
-            FFTRecursive recursive(N);
-
-            int iters = (N <= 4096) ? 5000 : 500;
-
-            run_benchmark("Iterative", iterative, N, iters);
-            run_benchmark("Recursive", recursive, N, iters);
-            std::cout << std::format("{:-^87}\n", "");
-        }
-    } catch (const std::exception& e) { 
-        std::cerr << "Error: " << e.what() << "\n"; 
-        return 1; 
+        run_benchmark("Iterative", iterative, N, iters);
+        run_benchmark("Recursive", recursive, N, iters);
     }
+   
     return 0;
 }
