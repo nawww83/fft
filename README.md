@@ -22,7 +22,9 @@ cmake --build .
 ./fft_app
 ```
 
-### FFT Performance & Accuracy Test
+### FFT Performance & Accuracy Test, std::complex\<double\>
+
+* Компилятор MSVC 19.50, частота ЦПУ 1.99 ГГц, [скрипт python](./assets/bench_visualize.py).
 
 ![FFT Performance](assets/fft_benchmark.png)
 
