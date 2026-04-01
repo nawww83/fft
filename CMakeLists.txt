@@ -13,6 +13,7 @@ add_executable(fft_app
     main.cpp 
     iterative_fft.cpp 
     recursive_fft.cpp
+    iterative_fft_soa.cpp
 )
 
 # 3. Настройка специфичных для компиляторов опций

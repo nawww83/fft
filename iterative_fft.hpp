@@ -73,7 +73,7 @@ private:
     ComplexVec full_table;
     std::vector<size_t> table_offsets; // Указатели на начало таблиц для каждого len
     struct SwapPair {
-        uint32_t i, j;
+        u32 i, j;
     };
     std::vector<std::vector<SwapPair>> rev_tables; // Таблицы для каждого n (2^k)
 

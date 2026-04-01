@@ -1,5 +1,6 @@
 #include "recursive_fft.hpp"
 #include "iterative_fft.hpp"
+#include "iterative_fft_soa.hpp"
 #include "hardcore.hpp"
 
 #include <iostream>
@@ -92,9 +93,56 @@ void run_benchmark(std::string_view name, T& fft_processor, size_t n, int iterat
                              name, n, avg, ci95, acc.snr, acc.l_inf, acc.is_ok ? 1 : 0);
 }
 
+void test_iterative_fft_soa()
+{
+    // 1. Подготовка данных
+    // Используем размер 16 для наглядности вывода
+    size_t n = 16;
+    ComplexVec work(n, Complex(0.0, 0.0));
+    // Установим единицу в 8-й элемент (импульс со сдвигом)
+    work[8] = {1.0, 0.0};
+
+    // 2. Инициализация процессора FFT
+    // Резервируем таблицы под максимальный размер
+    FFTIterativeSoA fft_processor(n);
+
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "--- Исходный вектор (импульс в work[8]) ---\n";
+    for (size_t i = 0; i < n; ++i) {
+        std::cout << i << ": (" << work[i].real() << ", " << work[i].imag() << ")\n";
+    }
+    // 3. Прямое преобразование (Forward FFT)
+    fft_processor.transform(work, false);
+    std::cout << "\n--- После прямого FFT (Спектр) ---\n";
+    for (const auto& c : work) {
+        // Убираем микроскопические значения для чистоты вывода
+        double re = std::abs(c.real()) < 1e-15 ? 0.0 : c.real();
+        double im = std::abs(c.imag()) < 1e-15 ? 0.0 : c.imag();
+        std::cout << "(" << re << ", " << im << "); ";
+    }
+    std::cout << "\n";
+    // 4. Обратное преобразование (Inverse FFT)
+    fft_processor.transform(work, true);
+
+    std::cout << "\n--- После обратного FFT (Восстановление) ---\n";
+    bool success = true;
+    for (size_t i = 0; i < n; ++i) {
+        double re = std::abs(work[i].real()) < 1e-15 ? 0.0 : work[i].real();
+        double im = std::abs(work[i].imag()) < 1e-15 ? 0.0 : work[i].imag();
+        
+        std::cout << i << ": (" << re << ", " << im << ")\n";
+        
+        // Проверка: должен вернуться исходный импульс в work[8]
+        if (i == 8 && std::abs(re - 1.0) > 1e-9) success = false;
+        if (i != 8 && (std::abs(re) > 1e-9 || std::abs(im) > 1e-9)) success = false;
+    }
+    std::cout << "\nРезультат: " << (success ? "УСПЕХ (Данные восстановлены)" : "ОШИБКА") << std::endl;
+}
+
 int main() {
     hardcore::pin_thread_to_core(0);
     std::cout << std::format("\nHardware: {}\n", hardcore::get_cpu_info());
+    
     // Печатаем заголовок для Python
     std::cout << "Algorithm,N,Mean,CI95,SNR,L_inf,IsOk\n";
 
@@ -103,12 +151,16 @@ int main() {
     for (size_t N : sizes) {
         FFTIterative iterative(N);
         FFTRecursive recursive(N);
+        FFTIterativeSoA iterative_soa(N);
         // Для больших N уменьшаем итерации до 200, чтобы тест не шел вечно
         int iters = (N <= 16384) ? 5000 : 200;
 
         run_benchmark("Iterative", iterative, N, iters);
         run_benchmark("Recursive", recursive, N, iters);
+        run_benchmark("Iterative SOA", iterative_soa, N, iters);
     }
+
+    // test_iterative_fft_soa();
    
     return 0;
 }

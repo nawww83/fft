@@ -30,7 +30,7 @@ FFTRecursive::FFTRecursive(size_t max_n) : m_max_n(max_n) {
         inverse.reserve(half);
         
         for (size_t k = 0; k < half; ++k) {
-            double ang = -2.0 * std::numbers::pi * k / n;
+            f64 ang = -2.0 * std::numbers::pi * k / n;
             direct.emplace_back(std::cos(ang), std::sin(ang));
             inverse.emplace_back(std::cos(-ang), std::sin(-ang));
         }
@@ -88,7 +88,7 @@ void FFTRecursive::transform(ComplexVec& v, bool invert) {
     run_fft_inplace(v.data(), n, log2n - 1, invert ? m_itwiddle_levels : m_twiddle_levels);
 
     if (invert) {
-        double inv_n = 1.0 / n;
+        f64 inv_n = 1.0 / n;
         for (auto& x : v) x *= inv_n;
     }
 }
