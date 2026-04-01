@@ -3,9 +3,8 @@
 #include "iterative_fft_soa.hpp"
 #include "hardcore.hpp"
 
+#include "types.hpp"
 #include <iostream>
-#include <vector>
-#include <complex>
 #include <algorithm>
 #include <cmath>
 #include <chrono>
