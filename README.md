@@ -23,23 +23,6 @@ cmake --build .
 ```
 
 ### FFT Performance & Accuracy Test
-**Hardware:** Intel(R) Core(TM) i7-8565U CPU @ 1.80GHz (Whiskey Lake)
-**Compiler:** Microsoft Visual C++ 19.50.35721.0
-
-| Algorithm | N | Cycle (ms) | MFLOPS | Jitter | SNR dB | Stat |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Iterative** | 1024 | 0.0158 | 6545.8 | 29.7% | 304.6 | OK |
-| **Recursive** | 1024 | 0.0207 | 4996.3 | 23.0% | 304.1 | OK |
-| | | | | | | |
-| **Iterative** | 4096 | 0.0898 | 5519.1 | 12.7% | 303.8 | OK |
-| **Recursive** | 4096 | 0.1056 | 4693.3 | 14.5% | 303.4 | OK |
-| | | | | | | |
-| **Iterative** | 16384 | 0.4962 | 4655.7 | 9.1% | 303.2 | OK |
-| **Recursive** | 16384 | 0.5042 | 4581.8 | 8.9% | 303.1 | OK |
-| | | | | | | |
-| **Iterative** | 65536 | 3.1608 | 3338.2 | 9.7% | 303.2 | OK |
-| **Recursive** | 65536 | 3.3457 | 3153.7 | **4.8%** | 302.8 | OK |
-
 
 ![FFT Performance](assets/fft_benchmark.png)
 
