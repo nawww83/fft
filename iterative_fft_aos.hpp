@@ -67,7 +67,7 @@ class FFTIterativeAoS : public FFTBase
 public:
     using FFTBase::FFTBase;
 
-    FFTLayout getType() const override { return FFTLayout::AoS; }
+    FFTLayout getLayout() const override { return FFTLayout::AoS; }
 
     void transform(AoSData &data, bool invert) override
     {

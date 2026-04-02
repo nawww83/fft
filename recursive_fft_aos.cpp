@@ -54,6 +54,8 @@ void FFTRecursiveAoS::run_fft_inplace_fwd(Complex64 *data, size_t n,
             data[i] = u + t;
             data[i + 1] = u - t;
         }
+        if (n <= 2) return;
+
         for (size_t i = 0; i < n; i += 4)
         {
             for (size_t j = 0; j < 2; ++j)
@@ -65,6 +67,8 @@ void FFTRecursiveAoS::run_fft_inplace_fwd(Complex64 *data, size_t n,
                 data[i + j + 2] = u - t;
             }
         }
+        if (n <= 4) return;
+    
         // 2. Слои len=8...32 (из таблиц TwiddleData)
         size_t t_idx = 0;
         for (size_t len = 8; len <= n; len <<= 1)
@@ -102,8 +106,7 @@ void FFTRecursiveAoS::run_fft_inplace_inv(Complex64 *data, size_t n, const Twidd
             data[i] = u + t;
             data[i + 1] = u - t;
         }
-        if (n < 4)
-            return;
+        if (n <= 2) return;
 
         // 2. Слой len=4 (w = +i для inverse)
         for (size_t i = 0; i < n; i += 4)
@@ -118,6 +121,7 @@ void FFTRecursiveAoS::run_fft_inplace_inv(Complex64 *data, size_t n, const Twidd
             data[i + 1] = u1 + t1;
             data[i + 3] = u1 - t1;
         }
+        if (n <= 4) return;
 
         // 3. Слои len=8...32 (из таблиц с инверсией Imag)
         size_t t_idx = 0;
@@ -155,9 +159,9 @@ void FFTRecursiveAoS::transform(AoSData &data, bool invert)
     // 1. Bit-reversal (обязателен для In-place DIT рекурсии)
     const auto &pairs = m_swaps->get_for_n(n);
     Complex64 *ptr = data.buffer.data();
-    for (const auto &p : pairs)
+    for (const auto [i, j] : pairs)
     {
-        std::swap(ptr[p.i], ptr[p.j]);
+        std::swap(ptr[i], ptr[j]);
     }
 
     // 2. Запуск рекурсии

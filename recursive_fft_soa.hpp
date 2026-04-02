@@ -8,7 +8,7 @@ class FFTRecursiveSoA : public FFTBase
 public:
     using FFTBase::FFTBase;
 
-    FFTLayout getType() const override { return FFTLayout::SoA; }
+    FFTLayout getLayout() const override { return FFTLayout::SoA; }
     void transform(SoAData &data, bool invert) override;
 
 private:

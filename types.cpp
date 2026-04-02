@@ -97,17 +97,15 @@ TwiddleData::TwiddleData(size_t n)
 {
     if (n < 8) return;
 
-    // Точный расчет: для n=1024 сумма (4+8+16...+512) = 1020
-    // Резервируем с запасом n, этого точно хватит
     aos.reserve(n);
     soa_re.reserve(n);
     soa_im.reserve(n);
     
-    // Оффсетов будет log2(n) - 2 (так как стартуем с 8, а не с 2)
-    table_offsets.reserve(32); 
+    table_offsets.assign(32, 0);
 
     for (size_t len = 8; len <= n; len <<= 1) {
-        table_offsets.push_back(soa_re.size()); // Используем текущий размер как оффсет
+        // Теперь индекс уровня всегда совпадает с bit_width(len) - 4
+        table_offsets[std::bit_width(len) - 4] = soa_re.size();
         
         const size_t half = len >> 1;
         const f64 angle_step = -2.0 * std::numbers::pi / static_cast<f64>(len);

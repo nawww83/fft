@@ -3,7 +3,6 @@
 #include "hardcore.hpp"
 
 #include <iomanip>
-#include <variant>
 #include <iostream>
 #include <algorithm>
 #include <numeric>
@@ -11,9 +10,11 @@
 #include <thread>
 #include <cmath>
 #include <chrono>
+#include <variant>
 #include <string_view>
 
-using ComplexVec = std::vector<std::complex<double>>;
+using RealVec = std::vector<f64>;
+using ComplexVec = std::vector<std::complex<f64>>;
 
 struct AccuracyMetrics {
     double snr;
@@ -59,70 +60,53 @@ AccuracyMetrics compute_accuracy(const ComplexVec& original, const ComplexVec& r
 void run_benchmark(std::string_view name, const std::unique_ptr<FFTBase>& fft_processor, size_t n, int iterations) {
     // --- ПАУЗА ДЛЯ ОХЛАЖДЕНИЯ ЯДРА ---
     // 500-1000 мс достаточно, чтобы сбросить накопленный жар (Thermal Jitter)
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     const ComplexVec original = generate_signal(n);
     
-    // Определяем тип процессора
-    auto fft_type = fft_processor->getType();
+    // Определяем тип данных БПФ
+    auto fft_layout = fft_processor->getLayout();
 
     // Подготавливаем данные в зависимости от типа
-    std::vector<double> re(n), im(n);
+    RealVec re(n), im(n);
     ComplexVec work_aos(n);
-
-    if (fft_type == FFTLayout::SoA) {
-        for(size_t i=0; i<n; ++i) { re[i] = original[i].real(); im[i] = original[i].imag(); }
-    } else {
-        std::copy(original.begin(), original.end(), work_aos.begin());
-    }
-
-    // Обертки для интерфейса
-    SoAData soa_data{re, im};
-    AoSData aos_data{work_aos};
+    std::variant<SoAData, AoSData> data_variant;
+    if (fft_layout == FFTLayout::SoA) 
+        data_variant = SoAData{re, im};
+    else 
+        data_variant = AoSData{work_aos};
+    std::visit([&](auto& data) {
+        data.assign_from(original);
+    }, data_variant);
 
     // Разогрев
     for(int i = 0; i < 500; ++i) { 
-        if (fft_type == FFTLayout::SoA) {
-            fft_processor->transform(soa_data, false);
-            fft_processor->transform(soa_data, true);
-        } else {
-            fft_processor->transform(aos_data, false);
-            fft_processor->transform(aos_data, true);
-        }
+        std::visit([&](auto& data) {
+            fft_processor->transform(data, false);
+            fft_processor->transform(data, true);
+        }, data_variant);
     }
-
-    std::vector<double> samples;
+    RealVec samples;
     samples.reserve(iterations);
-
     for (int i = 0; i < iterations; ++i) {
         auto t1 = std::chrono::high_resolution_clock::now();
-        if (fft_type == FFTLayout::SoA) {
-            fft_processor->transform(soa_data, false);
-            fft_processor->transform(soa_data, true);
-        } else {
-            fft_processor->transform(aos_data, false);
-            fft_processor->transform(aos_data, true);
-        }
+        std::visit([&](auto& data) {
+            fft_processor->transform(data, false);
+            fft_processor->transform(data, true);
+        }, data_variant);
         auto t2 = std::chrono::high_resolution_clock::now();
         samples.push_back(std::chrono::duration<double, std::milli>(t2 - t1).count());
     }
-
     // Расчет точности (один контрольный проход)
-    if (fft_type == FFTLayout::SoA) {
-        for(size_t i=0; i<n; ++i) { 
-            re[i] = original[i].real(); 
-            im[i] = original[i].imag(); 
-        }
-        fft_processor->transform(soa_data, false);
-        fft_processor->transform(soa_data, true);
-        // Перепаковываем для compute_accuracy
-        for(size_t i=0; i<n; ++i) { work_aos[i] = {re[i], im[i]}; }
-    } else {
-        std::copy(original.begin(), original.end(), work_aos.begin());
-        fft_processor->transform(aos_data, false);
-        fft_processor->transform(aos_data, true);
-    }
+    std::visit([&](auto& data) {
+        // 1. Загрузка данных
+        data.assign_from(original);
+        // 2. Расчет
+        fft_processor->transform(data, false);
+        fft_processor->transform(data, true);
+        // 3. Выгрузка результата для проверки точности
+        data.extract_to(work_aos);
+    }, data_variant);
     auto acc = compute_accuracy(original, work_aos);
-
     // Статистика времени
     double sum = 0, sq_sum = 0;
     for(double s : samples) { sum += s; sq_sum += s*s; }
@@ -135,27 +119,36 @@ void run_benchmark(std::string_view name, const std::unique_ptr<FFTBase>& fft_pr
                              name, n, avg, ci95, acc.snr, acc.l_inf, acc.is_ok ? 1 : 0);
 }
 
+// Универсальный доступ к данным через compile-time проверку
+template <typename T>
+auto get_pair(const T& data, size_t k) {
+    if constexpr (requires { data.re[k]; }) {
+        return std::make_pair(data.re[k], data.im[k]);
+    } else {
+        return std::make_pair(data.buffer[k].real(), data.buffer[k].imag());
+    }
+}
+
 template<size_t n>
-void test_fft_all_layouts(FFTType type) {
+void test_fft_all_layouts(FFTType fft_type) {
     const double eps = std::numeric_limits<double>::epsilon() * 100;
     FFTFactory factory(n);
 
-    // Вспомогательная функция для проверки результата
-    auto verify = [&](const auto& data, const std::string& label) -> bool {
-        bool ok = true;
-        for (size_t i = 0; i < n; ++i) {
-            f64 val_re, val_im;
-            
-            // Универсальный доступ к данным через compile-time проверку
-            if constexpr (requires { data.re[i]; }) {
-                val_re = data.re[i]; val_im = data.im[i];
-            } else {
-                val_re = data.buffer[i].real(); val_im = data.buffer[i].imag();
-            }
+    // Вспомогательная функция для жесткой остановки
+    auto assert_ok = [](bool condition, const std::string& msg) {
+        if (!condition) {
+            std::cerr << "\n[КРИТИЧЕСКАЯ ОШИБКА]: " << msg << std::endl;
+            throw std::runtime_error("FFT Verification Failed: " + msg);
+        }
+    };
 
+    // Лямбда для проверки корректности восстановления сигнала
+    auto verify = [&](const auto& data, const std::string& label) {
+        bool ok = true;
+        for (size_t i = 0; i < n; ++i) {        
+            auto [val_re, val_im] = get_pair(data, i);
             // Ожидаем 1.0 в центре (n/2), в остальных местах 0.0
             f64 expected_re = (i == n/2) ? 1.0 : 0.0;
-            
             if (std::abs(val_re - expected_re) > eps || std::abs(val_im) > eps) {
                 ok = false;
                 break;
@@ -163,27 +156,15 @@ void test_fft_all_layouts(FFTType type) {
         }
         std::cout << "Identity " << std::left << std::setw(5) << label 
                 << ": [" << (ok ? "УСПЕХ" : "ОШИБКА") << "]\n";
-        return ok;
+        assert_ok(ok, label + " recovery error");
     };
 
     // Лямбда для проверки спектра после Forward FFT
-    auto verify_spectrum = [&](const auto& data, const std::string& label) -> bool {
+    auto verify_spectrum = [&](const auto& data, const std::string& label) {
         bool ok = true;
         for (size_t k = 0; k < n; ++k) {
             f64 expected_re = (k % 2 == 0) ? 1.0 : -1.0;
-            f64 val_re, val_im;
-
-            // Определяем способ доступа на этапе компиляции
-            if constexpr (requires { data.re[k]; }) {
-                // Для SoAData
-                val_re = data.re[k]; 
-                val_im = data.im[k];
-            } else {
-                // Для AoSData (работаем с std::complex через span)
-                val_re = data.buffer[k].real(); 
-                val_im = data.buffer[k].imag();
-            }
-
+            auto [val_re, val_im] = get_pair(data, k);
             if (std::abs(val_re - expected_re) > eps || std::abs(val_im) > eps) {
                 ok = false;
                 // Раскомментируй для отладки конкретной гармоники:
@@ -193,52 +174,47 @@ void test_fft_all_layouts(FFTType type) {
         }
         std::cout << "Спектр " << std::left << std::setw(5) << label 
                 << ": [" << (ok ? "УСПЕХ" : "ОШИБКА") << "]\n";
-        return ok;
+        assert_ok(ok, label + " spectrum is wrong");
     };
 
     std::cout << "--- Запуск комплексного тестирования БПФ, N = " << 
-            n << ", type: " << (type == FFTType::Iterative ? "iterative" : "recursive") << 
+            n << ", type: " << (fft_type == FFTType::Iterative ? "iterative" : "recursive") << 
             " ---\n";
 
     // 1. ТЕСТ SoA
     std::cout << "SoA\n";
     {
-        auto fft = factory.createSoA(type);
-        std::vector<double> re(n, 0.0), im(n, 0.0);
-        re[n/2] = 1.0; 
-        
+        auto fft = factory.createSoA(fft_type);
+        RealVec re(n, 0.0), im(n, 0.0);
+        re[n/2] = 1.0;
         SoAData data{re, im};
         fft->transform(data, false); // Forward
         // Сначала проверяем спектр
-        if (!verify_spectrum(data, "SoA_Spec")) return;
+        verify_spectrum(data, "SoA Spectrum");
         fft->transform(data, true);  // Inverse
-        
-        if (!verify(data, "SoA Identity")) return;
+        verify(data, "SoA Identity");
     }
 
     // 2. ТЕСТ AoS
     std::cout << "AoS\n";
     {
-        auto fft = factory.createAoS(type);
-        std::vector<std::complex<double>> buffer(n, {0.0, 0.0});
+        auto fft = factory.createAoS(fft_type);
+        ComplexVec buffer(n, {0.0, 0.0});
         buffer[n/2] = {1.0, 0.0};
-        
         AoSData data{buffer};
         fft->transform(data, false);
         // Сначала проверяем спектр
-        if (!verify_spectrum(data, "AoS_Spec")) return;
+        verify_spectrum(data, "AoS Spectrum");
         fft->transform(data, true);
-        
-        if (!verify(data, "AoS Identity")) return;
+        verify(data, "AoS Identity");
     }
 
     // 3. ТЕСТ НА ОШИБКУ (Cross-call protection)
     std::cout << "Cross-call protection\n";
     {
-        auto fft = factory.createSoA(type);
-        std::vector<std::complex<double>> dummy(n);
+        auto fft = factory.createSoA(fft_type);
+        ComplexVec dummy(n);
         AoSData wrong_data{dummy};
-        
         try {
             fft->transform(wrong_data, false);
             std::cout << "Тест Logic: [ОШИБКА] (Исключение не сработало)\n";
@@ -274,6 +250,10 @@ int main() {
     test_fft_all_layouts<16>(FFTType::Iterative);
     test_fft_all_layouts<32>(FFTType::Iterative);
     test_fft_all_layouts<64>(FFTType::Iterative);
+    test_fft_all_layouts<128>(FFTType::Iterative);
+    test_fft_all_layouts<256>(FFTType::Iterative);
+    test_fft_all_layouts<512>(FFTType::Iterative);
+    test_fft_all_layouts<1024>(FFTType::Iterative);
 
     test_fft_all_layouts<2>(FFTType::Recursive);
     test_fft_all_layouts<4>(FFTType::Recursive);
@@ -281,12 +261,19 @@ int main() {
     test_fft_all_layouts<16>(FFTType::Recursive);
     test_fft_all_layouts<32>(FFTType::Recursive);
     test_fft_all_layouts<64>(FFTType::Recursive);
+    test_fft_all_layouts<128>(FFTType::Recursive);
+    test_fft_all_layouts<256>(FFTType::Recursive);
+    test_fft_all_layouts<512>(FFTType::Recursive);
+    test_fft_all_layouts<1024>(FFTType::Recursive);
+
+    // БЕНЧМАРК
+    // return 0;
     
     // Печатаем заголовок для Python
     std::cout << "Algorithm,N,Mean,CI95,SNR,L_inf,IsOk\n";
 
     // Добавляем 524288 и 1048576 для выхода за L3
-    const std::vector<size_t> sizes = {1024, 4096, 16384, 65536, 262144, 524288, 1048576};
+    const std::vector<size_t> sizes {1024, 4096, 16384, 65536, 262144, 524288, 1048576};
     for (size_t N : sizes) {
         // Между тестами разных размеров N
         target_core = (target_core == 2) ? 4 : 2; // Прыгаем между физическими ядрами
@@ -297,7 +284,7 @@ int main() {
         auto fft_soa = fft_factory.createSoA(FFTType::Iterative);
         auto fft_aos_recursive = fft_factory.createAoS(FFTType::Recursive);
         auto fft_soa_recursive = fft_factory.createSoA(FFTType::Recursive);
-        int iters = (N <= 16384) ? 100 : 20;
+        int iters = (N <= 16384) ? 50 : 10; // Увеличь если не хватает.
 
         run_benchmark("Iterative AoS", fft_aos, N, iters);
         run_benchmark("Iterative SoA", fft_soa, N, iters);

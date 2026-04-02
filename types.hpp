@@ -41,11 +41,36 @@ enum class FFTType {
 // Обертки для типов данных
 struct AoSData {
     std::span<Complex64> buffer;
+
+    // Загрузка из исходного вектора
+    void assign_from(const std::vector<Complex64>& src) {
+        std::copy(src.begin(), src.end(), buffer.begin());
+    }
+
+    // Выгрузка для проверки точности
+    void extract_to(std::vector<Complex64>& dest) const {
+        if (buffer.data() != dest.data()) {
+            std::copy(buffer.begin(), buffer.end(), dest.begin());
+        }
+    }
 };
 
 struct SoAData {
     std::span<f64> re;
     std::span<f64> im;
+
+    void assign_from(const std::vector<Complex64>& src) {
+        for (size_t i = 0; i < src.size(); ++i) {
+            re[i] = src[i].real();
+            im[i] = src[i].imag();
+        }
+    }
+
+    void extract_to(std::vector<Complex64>& dest) const {
+        for (size_t i = 0; i < dest.size(); ++i) {
+            dest[i] = {re[i], im[i]};
+        }
+    }
 };
 
 #ifdef _MSC_VER

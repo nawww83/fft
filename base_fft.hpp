@@ -15,7 +15,7 @@ public:
 
     virtual ~FFTBase() = default;
 
-    virtual FFTLayout getType() const = 0;
+    virtual FFTLayout getLayout() const = 0;
 
     virtual void transform([[maybe_unused]] AoSData& data, [[maybe_unused]] bool invert) {
         throw std::logic_error("AoS transform not supported by this engine");
