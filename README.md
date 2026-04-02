@@ -1,6 +1,6 @@
 # Vibe FFT
 
-Рекурсивная и итеративная реализации быстрого преобразования Фурье (БПФ) с
+Рекурсивная и итеративная SoA и AoS реализации быстрого преобразования Фурье (БПФ) с
 
 * Автовекторизацией (AVX2, AVX512f) для GCC/Clang
 * MSVC - для этого компилятора ситуация плохая - требуется ручная реализация на интринсиках...
@@ -22,9 +22,9 @@ cmake --build .
 ./fft_app
 ```
 
-### FFT Performance & Accuracy Test, std::complex\<double\>
+### FFT Performance & Accuracy Test, std::complex\<double\> (AoS)
 
-* Компилятор MSVC 19.50, частота ЦПУ 1.99 ГГц, [скрипт python](./assets/bench_visualize.py).
+* Компилятор MSVC 19.50 [скрипт python](./assets/bench_visualize.py).
 
 ![FFT Performance](assets/fft_benchmark.png)
 

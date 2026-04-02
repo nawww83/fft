@@ -1,11 +1,10 @@
-#pragma once
-
+#include "types.hpp"
 #include <bit>
-#include <cstdint>
 #include <concepts>
 #include <cassert>
+#include <numbers>
 
-namespace utils {
+namespace {
 
 /**
  * @brief Константный реверс байт (для static_assert)
@@ -64,4 +63,63 @@ static_assert(fast_bit_reverse(0b1101u, 4) == 0b1011u);
 static_assert(fast_bit_reverse(0xACu, 8) == 0x35u);
 static_assert(fast_bit_reverse(0x12345678u, 32) == 0x1E6A2C48u);
 
-} // namespace utils
+}
+
+Swaps::Swaps(size_t max_n)
+{
+    if (max_n < 2) return;
+    
+    size_t max_log2 = std::bit_width(max_n) - 1;
+    rev_tables.resize(max_log2 + 1);
+
+    for (size_t n = 2; n <= max_n; n <<= 1) {
+        int log2n = std::bit_width(n) - 1;
+        std::vector<SwapPair> pairs;
+        
+        for (u32 i = 0; i < (u32)n; ++i) {
+            u32 j = fast_bit_reverse(i, log2n);
+            if (i < j) pairs.push_back({i, j});
+        }
+        rev_tables[log2n] = std::move(pairs);
+    }
+}
+
+const std::vector<SwapPair> &Swaps::get_for_n(size_t n) const
+{
+    size_t idx = std::countr_zero(n);
+    if (idx >= rev_tables.size()) { // Убираем проверку на empty()
+        throw std::out_of_range("Swaps table not precomputed for this N");
+    }
+    return rev_tables[idx];
+}
+
+TwiddleData::TwiddleData(size_t n)
+{
+    if (n < 8) return;
+
+    // Точный расчет: для n=1024 сумма (4+8+16...+512) = 1020
+    // Резервируем с запасом n, этого точно хватит
+    aos.reserve(n);
+    soa_re.reserve(n);
+    soa_im.reserve(n);
+    
+    // Оффсетов будет log2(n) - 2 (так как стартуем с 8, а не с 2)
+    table_offsets.reserve(32); 
+
+    for (size_t len = 8; len <= n; len <<= 1) {
+        table_offsets.push_back(soa_re.size()); // Используем текущий размер как оффсет
+        
+        const size_t half = len >> 1;
+        const f64 angle_step = -2.0 * std::numbers::pi / static_cast<f64>(len);
+
+        for (size_t j = 0; j < half; ++j) {
+            f64 angle = angle_step * j;
+            f64 c = std::cos(angle);
+            f64 s = std::sin(angle);
+
+            aos.emplace_back(c, s);
+            soa_re.push_back(c);
+            soa_im.push_back(s);
+        }
+    }
+}

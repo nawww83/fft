@@ -10,10 +10,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # 2. Определение исполняемого файла
 add_executable(fft_app 
-    main.cpp 
-    iterative_fft.cpp 
-    recursive_fft.cpp
+    main.cpp
+    fft_factory.cpp
+    recursive_fft_aos.cpp
+    recursive_fft_soa.cpp
     iterative_fft_soa.cpp
+    types.cpp
 )
 
 # 3. Настройка специфичных для компиляторов опций

@@ -17,7 +17,7 @@ namespace hardcore
 
 /**
  * @brief Привязка к ядру (Windows/Linux). 
- * На macOS/других просто вернет false.
+ * На других ОС вернет false.
  */
 bool pin_thread_to_core(int core_id) {
 #if defined(_WIN32) || defined(_WIN64)
