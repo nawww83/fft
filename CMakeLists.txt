@@ -21,8 +21,7 @@ add_executable(fft_app
 # 3. Настройка специфичных для компиляторов опций
 if(MSVC)
     # Настройки для Microsoft Visual C++
-    target_compile_options(fft_app PRIVATE 
-        /std:c++latest #
+    target_compile_options(fft_app PRIVATE
         /fp:fast       # Включает агрессивную оптимизацию математики (в т.ч. finite-math)
         /permissive-   # Делает компилятор более строгим к стандарту
         /W4            # Высокий уровень предупреждений
@@ -31,26 +30,27 @@ if(MSVC)
         /Zc:preprocessor # Включает стандартный препроцессор
         /Zc:__cplusplus  # Правильное значение макроса __cplusplus
     )
-    # Это заставит CMake не добавлять свой флаг /std:c++17 или 20 поверх
-    set_target_properties(fft_app PROPERTIES CXX_STANDARD 23 CXX_EXTENSIONS OFF)
     target_compile_definitions(fft_app PRIVATE _USE_MATH_DEFINES NOMINMAX) # Для старых заголовков cmath
 else()
     # Настройки для GCC и Clang
     target_compile_options(fft_app PRIVATE 
-        -Wall 
-        -Wextra 
-        -O3 
-        # x86-64-v3 включает: SSE4.2, AVX, AVX2, BMI2, FMA.
-        -march=x86-64-v3
-        -ffinite-math-only # 
-        -fno-signed-zeros  #
-        # Отключаем установку errno для мат. функций (ускоряет sin/cos)
+        -Wall -Wextra -O3
+        -march=x86-64-v3    # AVX2, FMA, BMI2 (современный стандарт десктопов)
+        
+        # Настройки для агрессивной векторизации
         -fno-math-errno
+        -fno-trapping-math
+        -fno-signed-zeros
+        -ffinite-math-only
+        -fassociative-math   # Позволяет использовать FMA в FFT
     )
 
     # Если используется Clang, добавим специфичные флаги для векторизации
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        target_compile_options(fft_app PRIVATE -Rpass=loop-vectorize)
+        target_compile_options(fft_app PRIVATE -Rpass=loop-vectorize)    
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # Чтобы видеть, где векторизация прошла, а где нет (аналог -Rpass в Clang)
+        target_compile_options(fft_app PRIVATE -fopt-info-vec-optimized)
     endif()
 endif()
 

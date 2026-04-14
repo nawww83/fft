@@ -1,9 +1,6 @@
 #include "recursive_fft_soa.hpp"
 #include <bit>
 
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-__attribute__((target_clones("avx512f", "avx2", "default")))
-#endif
 static inline void apply_butterfly_soa_simd(f64 *RESTRICT re, f64 *RESTRICT im,
                                             const f64 *RESTRICT tw_r,
                                             const f64 *RESTRICT tw_i,
@@ -61,6 +58,9 @@ void FFTRecursiveSoA::transform(SoAData &data, bool invert)
     }
 }
 
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+__attribute__((target_clones("avx512f", "avx2", "default")))
+#endif
 void FFTRecursiveSoA::run_fft_soa(f64 *RESTRICT re, f64 *RESTRICT im, size_t n, const TwiddleData &tw, bool invert)
 {
     if (n <= 32) {

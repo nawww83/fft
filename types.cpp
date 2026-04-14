@@ -30,32 +30,25 @@ constexpr T internal_byteswap(T v) noexcept {
  * @brief Быстрый реверс бит (C++23).
  */
 template<std::unsigned_integral T>
-[[nodiscard]] constexpr T fast_bit_reverse(T val, int bits) noexcept {
-    static_assert(sizeof(T) <= 8);
-    
+constexpr T fast_bit_reverse(T val, int bits) noexcept {
     if (bits <= 0) return 0;
-    assert(bits <= static_cast<int>(sizeof(T) * 8));
-
+    
     T v = val;
 
-    // Маски как константы T для подавления ворнингов MSVC
-    const T mask1 = static_cast<T>(0x5555555555555555ull);
-    const T mask2 = static_cast<T>(0xAAAAAAAAAAAAAAAAull);
-    const T mask3 = static_cast<T>(0x3333333333333333ull);
-    const T mask4 = static_cast<T>(0xCCCCCCCCCCCCCCCCull);
-    const T mask5 = static_cast<T>(0x0F0F0F0F0F0F0F0Full);
-    const T mask6 = static_cast<T>(0xF0F0F0F0F0F0F0F0ull);
+    // Маски для побитовой перестановки (компилятор разложит их сам)
+    v = ((v & (T)0x5555555555555555ull) << 1) | ((v & (T)0xAAAAAAAAAAAAAAAAull) >> 1);
+    v = ((v & (T)0x3333333333333333ull) << 2) | ((v & (T)0xCCCCCCCCCCCCCCCCull) >> 2);
+    v = ((v & (T)0x0F0F0F0F0F0F0F0Full) << 4) | ((v & (T)0xF0F0F0F0F0F0F0F0ull) >> 4);
 
-    v = ((v & mask1) << 1) | ((v & mask2) >> 1);
-    v = ((v & mask3) << 2) | ((v & mask4) >> 2);
-    v = ((v & mask5) << 4) | ((v & mask6) >> 4);
-    
-    // Прямой возврат результата из веток исключает ошибки инициализации
-    if consteval {
-        return static_cast<T>(internal_byteswap(v) >> (sizeof(T) * 8 - bits));
-    } else {
-        return static_cast<T>(std::byteswap(v) >> (sizeof(T) * 8 - bits));
+    // Вместо сложной internal_byteswap используем встроенный механизм C++20
+    // Если T = uint8_t, реверс байт не нужен. 
+    // Для остальных типов GCC 13 сгенерирует инструкцию BSWAP автоматически.
+    if constexpr (sizeof(T) > 1) {
+        // Ручной swap через сдвиги (компилятор распознает этот паттерн как bswap)
+        v = internal_byteswap(v); 
     }
+
+    return v >> (sizeof(T) * 8 - bits);
 }
 
 // Тесты для проверки во время компиляции

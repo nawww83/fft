@@ -35,22 +35,19 @@ struct Direct
 
 struct Inverse
 {
-    static inline Complex64 get(Complex64 w) { return std::conj(w); }
+    static inline Complex64 get(Complex64 w) { return {w.real(), -w.imag()}; }
 };
 
 /**
  * @brief Ядро бабочки FFT, вынесенное для SIMD векторизации.
- * target_clones позволяет компилятору создать версии под разные наборы инструкций.
  */
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-__attribute__((target_clones("avx512f", "avx2", "default")))
-#endif
 template <typename Mode>
 static inline void apply_butterfly_block_simd(Complex64 *__restrict data_low,
                                               Complex64 *__restrict data_high,
                                               const Complex64 *__restrict table,
                                               size_t half)
 {
+    #pragma GCC ivdep
     for (size_t j = 0; j < half; ++j)
     {
         Complex64 w = Mode::get(table[j]);
@@ -71,6 +68,14 @@ public:
 
     void transform(AoSData &data, bool invert) override
     {
+        transform_impl(data, invert);
+    }
+
+private:
+    #if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+    __attribute__((target_clones("avx512f", "avx2", "default")))
+    #endif
+    void transform_impl(AoSData &data, bool invert) {
         const auto n = data.buffer.size();
         if (n <= 1)
             return;
@@ -93,7 +98,6 @@ public:
         }
     }
 
-private:
     template <bool invert>
     void execute_aos(std::span<Complex64> v) const
     {

@@ -2,15 +2,11 @@
 #include <numbers>
 #include <bit>
 
-// --- 1. ВЫНОСИМ ГОРЯЧЕЕ ЯДРО СБОРКИ ДЛЯ SIMD ---
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-__attribute__((target_clones("avx512f", "avx2", "default")))
-#endif
 static inline void apply_recursive_butterfly_simd(Complex64 *RESTRICT data,
                                                   const Complex64 *RESTRICT twiddles,
                                                   size_t half)
 {
-    // Теперь это идеальный цикл для векторизации: два линейных чтения, два линейных записи
+    #pragma GCC ivdep
     for (size_t k = 0; k < half; ++k)
     {
         Complex64 w = twiddles[k];
@@ -22,13 +18,11 @@ static inline void apply_recursive_butterfly_simd(Complex64 *RESTRICT data,
     }
 }
 
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
-__attribute__((target_clones("avx512f", "avx2", "default")))
-#endif
 static inline void apply_recursive_butterfly_inv_simd(Complex64 *RESTRICT data,
                                                       const Complex64 *RESTRICT twiddles,
                                                       size_t half)
 {
+    #pragma GCC ivdep
     for (size_t k = 0; k < half; ++k)
     {
         // Конъюгация "на лету": (tw.re, -tw.im)
@@ -41,6 +35,9 @@ static inline void apply_recursive_butterfly_inv_simd(Complex64 *RESTRICT data,
     }
 }
 
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+__attribute__((target_clones("avx512f", "avx2", "default")))
+#endif
 void FFTRecursiveAoS::run_fft_inplace_fwd(Complex64 *data, size_t n,
                                           const TwiddleData &twiddles)
 {
@@ -94,6 +91,9 @@ void FFTRecursiveAoS::run_fft_inplace_fwd(Complex64 *data, size_t n,
     apply_recursive_butterfly_simd(data, &twiddles.aos[twiddles.table_offsets[t_idx]], half);
 }
 
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+__attribute__((target_clones("avx512f", "avx2", "default")))
+#endif
 void FFTRecursiveAoS::run_fft_inplace_inv(Complex64 *data, size_t n, const TwiddleData &twiddles)
 {
     // --- БАЗОВЫЙ СЛУЧАЙ (Inverse Hybrid N <= 32) ---

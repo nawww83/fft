@@ -1,6 +1,9 @@
 #include "iterative_fft_soa.hpp"
 #include <numbers>
 
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+__attribute__((target_clones("avx512f", "avx2", "default")))
+#endif
 void FFTIterativeSoA::execute_soa(f64 *RESTRICT re, f64 *RESTRICT im, size_t n, bool invert) const
 {
     if (n < 2)
@@ -75,7 +78,7 @@ scaling:
 }
 
 // Прямое преобразование (Forward)
-void FFTIterativeSoA::apply_layer_soa_fwd(f64 *RESTRICT re, f64 *RESTRICT im, size_t half,
+inline void FFTIterativeSoA::apply_layer_soa_fwd(f64 *RESTRICT re, f64 *RESTRICT im, size_t half,
                          const f64 *RESTRICT tw_re, const f64 *RESTRICT tw_im)
 {
     for (size_t j = 0; j < half; ++j)
@@ -96,7 +99,7 @@ void FFTIterativeSoA::apply_layer_soa_fwd(f64 *RESTRICT re, f64 *RESTRICT im, si
 }
 
 // Обратное преобразование (Inverse)
-void FFTIterativeSoA::apply_layer_soa_inv(f64 *RESTRICT re, f64 *RESTRICT im, size_t half,
+inline void FFTIterativeSoA::apply_layer_soa_inv(f64 *RESTRICT re, f64 *RESTRICT im, size_t half,
                          const f64 *RESTRICT tw_re, const f64 *RESTRICT tw_im)
 {
     for (size_t j = 0; j < half; ++j)
