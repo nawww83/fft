@@ -12,9 +12,20 @@
 #include <chrono>
 #include <variant>
 #include <string_view>
+#include <utility>
 
 using RealVec = std::vector<f64>;
 using ComplexVec = std::vector<std::complex<f64>>;
+
+static const char* fft_type_name(FFTType t) {
+    switch (t) {
+    case FFTType::Iterative:     return "iterative";
+    case FFTType::Recursive:     return "recursive";
+    case FFTType::IterativeSimd: return "iterative+AVX2";
+    case FFTType::RecursiveSimd: return "recursive+AVX2";
+    }
+    return "unknown";
+}
 
 struct AccuracyMetrics {
     double snr;
@@ -78,12 +89,21 @@ void run_benchmark(std::string_view name, const std::unique_ptr<FFTBase>& fft_pr
         data.assign_from(original);
     }, data_variant);
 
-    // Разогрев
-    for(int i = 0; i < 500; ++i) { 
-        std::visit([&](auto& data) {
-            fft_processor->transform(data, false);
-            fft_processor->transform(data, true);
-        }, data_variant);
+    // Разогрев. Ограничен по времени: на N = 2^20 фиксированные 500 итераций
+    // занимали бы минуты «вхолостую», не влияя на сам замер.
+    {
+        const auto warm_start = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < 500; ++i) {
+            std::visit([&](auto& data) {
+                fft_processor->transform(data, false);
+                fft_processor->transform(data, true);
+            }, data_variant);
+            if (i >= 4) {
+                const double elapsed = std::chrono::duration<double, std::milli>(
+                    std::chrono::high_resolution_clock::now() - warm_start).count();
+                if (elapsed > 300.0) break;
+            }
+        }
     }
     RealVec samples;
     samples.reserve(iterations);
@@ -178,7 +198,7 @@ void test_fft_all_layouts(FFTType fft_type) {
     };
 
     std::cout << "--- Запуск комплексного тестирования БПФ, N = " << 
-            n << ", type: " << (fft_type == FFTType::Iterative ? "iterative" : "recursive") << 
+            n << ", type: " << fft_type_name(fft_type) <<
             " ---\n";
 
     // 1. ТЕСТ SoA
@@ -225,6 +245,13 @@ void test_fft_all_layouts(FFTType fft_type) {
 }
 
 
+// Прогон проверок для всех степеней двойки от 2^1 до 2^(sizeof...(I))
+template <size_t... I>
+void run_all_verification(std::index_sequence<I...>, FFTType type) {
+    (test_fft_all_layouts<(static_cast<size_t>(1) << (I + 1))>(type), ...);
+}
+
+
 int main() {
     // 1. Проверяем доступные ресурсы
     unsigned int total_logical_cores = std::thread::hardware_concurrency();
@@ -244,27 +271,11 @@ int main() {
     std::cout << std::format("Hardware: {}\n", hardcore::get_cpu_info());
     std::cout << std::format("Total Logical Cores: {}\n", total_logical_cores);
 
-    test_fft_all_layouts<2>(FFTType::Iterative);
-    test_fft_all_layouts<4>(FFTType::Iterative);
-    test_fft_all_layouts<8>(FFTType::Iterative);
-    test_fft_all_layouts<16>(FFTType::Iterative);
-    test_fft_all_layouts<32>(FFTType::Iterative);
-    test_fft_all_layouts<64>(FFTType::Iterative);
-    test_fft_all_layouts<128>(FFTType::Iterative);
-    test_fft_all_layouts<256>(FFTType::Iterative);
-    test_fft_all_layouts<512>(FFTType::Iterative);
-    test_fft_all_layouts<1024>(FFTType::Iterative);
-
-    test_fft_all_layouts<2>(FFTType::Recursive);
-    test_fft_all_layouts<4>(FFTType::Recursive);
-    test_fft_all_layouts<8>(FFTType::Recursive);
-    test_fft_all_layouts<16>(FFTType::Recursive);
-    test_fft_all_layouts<32>(FFTType::Recursive);
-    test_fft_all_layouts<64>(FFTType::Recursive);
-    test_fft_all_layouts<128>(FFTType::Recursive);
-    test_fft_all_layouts<256>(FFTType::Recursive);
-    test_fft_all_layouts<512>(FFTType::Recursive);
-    test_fft_all_layouts<1024>(FFTType::Recursive);
+    constexpr size_t kMaxLevel = 10; // проверяем N = 2, 4, ..., 1024
+    for (FFTType type : {FFTType::Iterative, FFTType::Recursive,
+                         FFTType::IterativeSimd, FFTType::RecursiveSimd}) {
+        run_all_verification(std::make_index_sequence<kMaxLevel>{}, type);
+    }
 
     // БЕНЧМАРК
     // return 0;
@@ -280,16 +291,22 @@ int main() {
         hardcore::pin_thread_to_core(target_core);
 
         FFTFactory fft_factory(N);
-        auto fft_aos = fft_factory.createAoS(FFTType::Iterative);
-        auto fft_soa = fft_factory.createSoA(FFTType::Iterative);
-        auto fft_aos_recursive = fft_factory.createAoS(FFTType::Recursive);
-        auto fft_soa_recursive = fft_factory.createSoA(FFTType::Recursive);
-        int iters = (N <= 16384) ? 50 : 10; // Увеличь если не хватает.
+        int iters = (N <= 16384) ? 50 : 30; // Больше итераций на больших N: там замеры шумнее.
 
-        run_benchmark("Iterative AoS", fft_aos, N, iters);
-        run_benchmark("Iterative SoA", fft_soa, N, iters);
-        run_benchmark("Recursive AoS", fft_aos_recursive, N, iters);
-        run_benchmark("Recursive SoA", fft_soa_recursive, N, iters);
+        struct BenchCase { const char* name; FFTType type; FFTLayout layout; };
+        static constexpr BenchCase cases[] = {
+            {"Iterative AoS",      FFTType::Iterative,     FFTLayout::AoS},
+            {"Iterative SoA",      FFTType::Iterative,     FFTLayout::SoA},
+            {"Recursive AoS",      FFTType::Recursive,     FFTLayout::AoS},
+            {"Recursive SoA",      FFTType::Recursive,     FFTLayout::SoA},
+            {"Iterative AoS SIMD", FFTType::IterativeSimd, FFTLayout::AoS},
+            {"Iterative SoA SIMD", FFTType::IterativeSimd, FFTLayout::SoA},
+            {"Recursive AoS SIMD", FFTType::RecursiveSimd, FFTLayout::AoS},
+            {"Recursive SoA SIMD", FFTType::RecursiveSimd, FFTLayout::SoA},
+        };
+        for (const auto& c : cases) {
+            run_benchmark(c.name, fft_factory.create(c.layout, c.type), N, iters);
+        }
     }
    
     return 0;

@@ -35,7 +35,11 @@ enum class FFTLayout {
 
 enum class FFTType {
     Iterative,
-    Recursive
+    Recursive,
+    // Варианты с ручными AVX2/FMA-ядрами (см. simd_kernels.hpp).
+    // При сборке без AVX2 автоматически деградируют до скалярного кода.
+    IterativeSimd,
+    RecursiveSimd
 };
 
 // Обертки для типов данных

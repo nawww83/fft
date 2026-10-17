@@ -15,6 +15,10 @@ add_executable(fft_app
     recursive_fft_aos.cpp
     recursive_fft_soa.cpp
     iterative_fft_soa.cpp
+    iterative_fft_aos_simd.cpp
+    iterative_fft_soa_simd.cpp
+    recursive_fft_aos_simd.cpp
+    recursive_fft_soa_simd.cpp
     types.cpp
 )
 
